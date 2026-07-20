@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Media;
 using YtecStickyNote.Models;
 using YtecStickyNote.Services;
 
@@ -11,6 +12,7 @@ var tests = new (string Name, Action Run)[]
     ("旧保存データのバックアップを作る", TestBackup),
     ("壊れた保存データを上書き対象にしない", TestCorruptDataProtection),
     ("画面外の位置を見える範囲へ戻す", TestWindowPlacement),
+    ("PC内フォントを列挙してお気に入りを先頭に並べる", TestFontCatalog),
     ("自動起動レジストリを登録・解除できる", TestStartupRegistry)
 };
 
@@ -109,19 +111,50 @@ static void TestWindowPlacement()
 
 static void TestStartupRegistry()
 {
-    var valueName = $"Y-TEC Sticky Note Test {Guid.NewGuid():N}";
-    var service = new StartupService(valueName, Environment.ProcessPath);
-    try
+    WithTemporaryDirectory(directory =>
     {
-        service.SetEnabled(true);
-        Assert(service.IsEnabledForCurrentExecutable(), "自動起動を確認できません。");
-    }
-    finally
-    {
-        service.SetEnabled(false);
-    }
+        var valueName = $"Y-TEC Sticky Note Test {Guid.NewGuid():N}";
+        var sourceHelper = Path.Combine(directory, "source-helper.exe");
+        var localStartupDirectory = Path.Combine(directory, "local-startup");
+        var targetExecutable = Path.Combine(directory, "portable-app", "test-app.exe");
+        var targetDataFile = Path.Combine(directory, "portable-app", "data", "sticky-note.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(targetDataFile)!);
+        File.WriteAllBytes(sourceHelper, [0x4D, 0x5A, 0x01, 0x02]);
+        File.WriteAllBytes(targetExecutable, [0x4D, 0x5A, 0x03, 0x04]);
+        File.WriteAllText(targetDataFile, "{}");
+        var service = new StartupService(valueName, targetExecutable, sourceHelper, localStartupDirectory);
+        try
+        {
+            service.SetEnabled(true);
+            Assert(service.IsEnabledForCurrentExecutable(), "自動起動を確認できません。");
+            Assert(File.Exists(service.LocalHelperPath), "待機プログラムがローカルへ配置されていません。");
+            var configLines = File.ReadLines(service.ConfigFilePath).ToArray();
+            Assert(configLines[0] == Path.GetFullPath(targetExecutable), "起動対象の設定が一致しません。");
+            Assert(configLines.Contains($"data={Path.GetFullPath(targetDataFile)}"), "既存の保存データが準備確認の対象になっていません。");
+        }
+        finally
+        {
+            service.SetEnabled(false);
+        }
 
-    Assert(!service.IsEnabledForCurrentExecutable(), "テスト用自動起動設定が残っています。");
+        Assert(!service.IsEnabledForCurrentExecutable(), "テスト用自動起動設定が残っています。");
+        Assert(!File.Exists(service.ConfigFilePath), "解除後も起動対象の設定が残っています。");
+    });
+}
+
+static void TestFontCatalog()
+{
+    var expectedCount = Fonts.SystemFontFamilies
+        .Where(font => !string.IsNullOrWhiteSpace(font.Source))
+        .Select(font => font.Source)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Count();
+    var choices = FontCatalog.GetInstalledFonts();
+
+    Assert(choices.Count == expectedCount, "インストール済みフォントの一部が一覧にありません。");
+    Assert(choices.Count > 10, "フォント一覧が少なすぎます。");
+    Assert(choices.TakeWhile(font => font.IsFavorite).Count() == choices.Count(font => font.IsFavorite),
+        "よく使うフォントが一覧の先頭にまとまっていません。");
 }
 
 static void WithTemporaryDirectory(Action<string> action)

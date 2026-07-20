@@ -15,7 +15,8 @@
 
 ## Windows機能
 
-- 自動起動は現在の実行ファイルを `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run` へ登録する。
+- 自動起動は `%LOCALAPPDATA%\\Y-TEC\\StickyNote` のネイティブ待機プログラムを `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run` へ登録し、現在の実行ファイルの準備完了を最大10分待つ。
+- 配布更新では既存配布フォルダーの `data` を保護し、配布ZIPへ `data` を含めない。
 - 開発版を自動起動へ残さない。画面検証では `--test-mode` 引数を使う。
 - ウィンドウ位置は仮想デスクトップ座標で保存し、モニター構成変更後も一部が画面内へ戻るよう検証する。
 

@@ -50,6 +50,10 @@ window.Loaded += async (_, _) =>
         editor.Document.Blocks.Add(CreateLine("・14時に打ち合わせ", new SolidColorBrush(Color.FromRgb(38, 74, 103)), italic: true));
         editor.Document.Blocks.Add(CreateDecoratedLine());
         editor.Document.Blocks.Add(CreateLine("罫線と文字の行送りを確認", Brushes.DarkSlateGray));
+        var centered = CreateLine("中央揃え", new SolidColorBrush(Color.FromRgb(104, 74, 121)));
+        centered.TextAlignment = TextAlignment.Center;
+        editor.Document.Blocks.Add(centered);
+        editor.Document.Blocks.Add(CreateBulletList());
         editor.CaretPosition = editor.Document.ContentEnd;
 
         var themeButtonName = themeId switch
@@ -138,6 +142,14 @@ static Paragraph CreateDecoratedLine()
         Foreground = Brushes.DimGray
     });
     return paragraph;
+}
+
+static List CreateBulletList()
+{
+    var list = new List { MarkerStyle = TextMarkerStyle.Disc };
+    list.ListItems.Add(new ListItem(CreateLine("箇条書きの項目", Brushes.DarkSlateGray)));
+    list.ListItems.Add(new ListItem(CreateLine("次の項目", Brushes.DarkSlateGray)));
+    return list;
 }
 
 static Paragraph NewParagraph() => new()

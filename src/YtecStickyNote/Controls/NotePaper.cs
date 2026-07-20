@@ -49,6 +49,8 @@ public sealed class NotePaper : FrameworkElement
 
     public double TopPadding { get; set; } = 10;
 
+    public double RuleLift { get; set; }
+
     protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
@@ -64,7 +66,7 @@ public sealed class NotePaper : FrameworkElement
         }
 
         var offset = ((ScrollOffset % LineHeight) + LineHeight) % LineHeight;
-        var firstRule = TopPadding + LineHeight - 1 - offset;
+        var firstRule = TopPadding + LineHeight - 1 - RuleLift - offset;
         var rulePen = new Pen(new SolidColorBrush(RuleColor), 1);
         for (var y = firstRule; y < ActualHeight; y += LineHeight)
         {

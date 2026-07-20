@@ -15,6 +15,8 @@ namespace YtecStickyNote;
 
 public partial class MainWindow : Window
 {
+    private const double NoteLineHeight = 30;
+    private static readonly Thickness NotePagePadding = new(64, 10, 22, 24);
     private readonly PortableDataService _dataService = new();
     private readonly StartupService _startupService = new();
     private readonly DispatcherTimer _saveTimer;
@@ -23,6 +25,7 @@ public partial class MainWindow : Window
     private bool _isLoading = true;
     private bool _isClosing;
     private bool _savingBlocked;
+    private bool _isNormalizingDocument;
 
     public MainWindow()
     {
@@ -57,8 +60,10 @@ public partial class MainWindow : Window
         Width = bounds.Width;
         Height = bounds.Height;
 
+        LoadInstalledFonts();
         ApplyTheme(_state.ThemeId);
         LoadEditorContent(_state.RichTextRtfBase64);
+        NormalizeDocumentLayout();
 
         Topmost = _state.AlwaysOnTop;
         TopmostButton.IsChecked = Topmost;
@@ -173,6 +178,24 @@ public partial class MainWindow : Window
 
     private void StrikeButton_Click(object sender, RoutedEventArgs e) => ToggleDecoration(TextDecorationLocation.Strikethrough);
 
+    private void CenterAlignButton_Click(object sender, RoutedEventArgs e)
+    {
+        var isCentered = IsSelectionValue(Block.TextAlignmentProperty, TextAlignment.Center);
+        Editor.Selection.ApplyPropertyValue(Block.TextAlignmentProperty, isCentered ? TextAlignment.Left : TextAlignment.Center);
+        Editor.Focus();
+        UpdateFormattingButtons();
+        ScheduleSave();
+    }
+
+    private void BulletButton_Click(object sender, RoutedEventArgs e)
+    {
+        EditingCommands.ToggleBullets.Execute(null, Editor);
+        NormalizeDocumentLayout();
+        Editor.Focus();
+        UpdateFormattingButtons();
+        ScheduleSave();
+    }
+
     private void ToggleDecoration(TextDecorationLocation location)
     {
         var propertyValue = Editor.Selection.GetPropertyValue(Inline.TextDecorationsProperty);
@@ -202,12 +225,12 @@ public partial class MainWindow : Window
 
     private void FontFamilyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!IsLoaded || _isLoading || FontFamilyCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string family)
+        if (!IsLoaded || _isLoading || FontFamilyCombo.SelectedItem is not FontChoice font)
         {
             return;
         }
 
-        Editor.Selection.ApplyPropertyValue(TextElement.FontFamilyProperty, new FontFamily(family));
+        Editor.Selection.ApplyPropertyValue(TextElement.FontFamilyProperty, new FontFamily(font.FamilyName));
         Editor.Focus();
         ScheduleSave();
     }
@@ -261,6 +284,9 @@ public partial class MainWindow : Window
         ShellBorder.Background = new SolidColorBrush(theme.Paper);
         ShellBorder.BorderBrush = new SolidColorBrush(Color.FromArgb(95, theme.Accent.R, theme.Accent.G, theme.Accent.B));
         TitleBar.Background = new SolidColorBrush(theme.Chrome);
+        var bandColor = Blend(theme.Paper, theme.Chrome, 0.48);
+        FormattingBar.Background = new SolidColorBrush(bandColor);
+        SettingsBar.Background = new SolidColorBrush(bandColor);
 
         foreach (var themeButton in GetThemeButtons())
         {
@@ -323,9 +349,9 @@ public partial class MainWindow : Window
     private void Editor_TextChanged(object sender, TextChangedEventArgs e)
     {
         UpdatePlaceholder();
-        if (!_isLoading)
+        if (!_isLoading && !_isNormalizingDocument)
         {
-            NormalizeParagraphs();
+            NormalizeDocumentLayout();
             ScheduleSave();
         }
     }
@@ -366,6 +392,8 @@ public partial class MainWindow : Window
         var decorations = propertyValue as TextDecorationCollection;
         UnderlineButton.IsChecked = decorations?.Any(item => item.Location == TextDecorationLocation.Underline) == true;
         StrikeButton.IsChecked = decorations?.Any(item => item.Location == TextDecorationLocation.Strikethrough) == true;
+        CenterAlignButton.IsChecked = IsSelectionValue(Block.TextAlignmentProperty, TextAlignment.Center);
+        BulletButton.IsChecked = Editor.Selection.Start.Paragraph?.Parent is ListItem;
     }
 
     private bool IsSelectionValue(DependencyProperty property, object expected)
@@ -374,13 +402,63 @@ public partial class MainWindow : Window
         return value != DependencyProperty.UnsetValue && Equals(value, expected);
     }
 
-    private void NormalizeParagraphs()
+    private void LoadInstalledFonts()
     {
-        foreach (var block in Editor.Document.Blocks)
+        var fonts = FontCatalog.GetInstalledFonts();
+        FontFamilyCombo.ItemsSource = fonts;
+        FontFamilyCombo.SelectedItem = fonts.FirstOrDefault(font =>
+            string.Equals(font.FamilyName, "Yu Gothic UI", StringComparison.OrdinalIgnoreCase)) ??
+            fonts.FirstOrDefault(font => string.Equals(font.FamilyName, "Meiryo", StringComparison.OrdinalIgnoreCase)) ??
+            fonts.FirstOrDefault();
+    }
+
+    private void NormalizeDocumentLayout()
+    {
+        if (_isNormalizingDocument)
         {
-            block.LineHeight = 30;
+            return;
+        }
+
+        _isNormalizingDocument = true;
+        try
+        {
+            Editor.Document.PagePadding = NotePagePadding;
+            Editor.Document.LineHeight = NoteLineHeight;
+            Editor.Document.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
+            NormalizeBlocks(Editor.Document.Blocks);
+        }
+        finally
+        {
+            _isNormalizingDocument = false;
+        }
+    }
+
+    private static void NormalizeBlocks(BlockCollection blocks)
+    {
+        foreach (var block in blocks)
+        {
+            block.LineHeight = NoteLineHeight;
             block.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
             block.Margin = new Thickness(0);
+            block.Padding = new Thickness(0);
+
+            if (block is Paragraph paragraph)
+            {
+                paragraph.TextIndent = 0;
+            }
+            else if (block is Section section)
+            {
+                NormalizeBlocks(section.Blocks);
+            }
+            else if (block is List list)
+            {
+                list.Margin = new Thickness(14, 0, 0, 0);
+                list.MarkerOffset = 12;
+                foreach (var item in list.ListItems)
+                {
+                    NormalizeBlocks(item.Blocks);
+                }
+            }
         }
     }
 
@@ -396,7 +474,7 @@ public partial class MainWindow : Window
             var bytes = Convert.FromBase64String(rtfBase64);
             using var stream = new MemoryStream(bytes);
             new TextRange(Editor.Document.ContentStart, Editor.Document.ContentEnd).Load(stream, DataFormats.Rtf);
-            NormalizeParagraphs();
+            NormalizeDocumentLayout();
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException or IOException)
         {
@@ -472,5 +550,14 @@ public partial class MainWindow : Window
         {
             _statusTimer.Start();
         }
+    }
+
+    private static Color Blend(Color paper, Color chrome, double chromeWeight)
+    {
+        var paperWeight = 1 - chromeWeight;
+        return Color.FromRgb(
+            (byte)Math.Round((paper.R * paperWeight) + (chrome.R * chromeWeight)),
+            (byte)Math.Round((paper.G * paperWeight) + (chrome.G * chromeWeight)),
+            (byte)Math.Round((paper.B * paperWeight) + (chrome.B * chromeWeight)));
     }
 }

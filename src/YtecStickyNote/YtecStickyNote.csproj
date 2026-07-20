@@ -13,7 +13,7 @@
     <PublishSingleFile>false</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
     <DebugType>embedded</DebugType>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Product>Y-TEC 付箋</Product>
     <Company>Y-TEC</Company>
     <Copyright>Copyright © Y-TEC 2026</Copyright>

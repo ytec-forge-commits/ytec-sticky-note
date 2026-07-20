@@ -56,9 +56,9 @@
         </Style>
 
         <Style x:Key="FormatButtonStyle" TargetType="ToggleButton">
-            <Setter Property="Width" Value="34" />
+            <Setter Property="Width" Value="31" />
             <Setter Property="Height" Value="32" />
-            <Setter Property="Margin" Value="2" />
+            <Setter Property="Margin" Value="1" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="BorderBrush" Value="#1E2F3A40" />
             <Setter Property="Background" Value="#72FFFFFF" />
@@ -123,10 +123,10 @@
 
         <Style TargetType="ComboBox">
             <Setter Property="Height" Value="32" />
-            <Setter Property="Margin" Value="3,2" />
-            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="Padding" Value="6,3" />
             <Setter Property="BorderBrush" Value="#26384046" />
-            <Setter Property="Background" Value="#EFFFFFFF" />
+            <Setter Property="Background" Value="#B8FFFFFF" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True" />
         </Style>
@@ -164,7 +164,7 @@
                 </StackPanel>
             </Grid>
 
-            <Border Grid.Row="1" Background="#BFFFFFFF" BorderBrush="#183C3C36" BorderThickness="0,0,0,1" Padding="8,5">
+            <Border x:Name="FormattingBar" Grid.Row="1" Background="#BFFFFFFF" BorderBrush="#183C3C36" BorderThickness="0,0,0,1" Padding="8,5">
                 <WrapPanel VerticalAlignment="Center">
                     <ToggleButton x:Name="BoldButton" Style="{StaticResource FormatButtonStyle}" ToolTip="太字 (Ctrl+B)" Click="BoldButton_Click">
                         <TextBlock Text="B" FontWeight="Bold" />
@@ -178,24 +178,44 @@
                     <ToggleButton x:Name="StrikeButton" Style="{StaticResource FormatButtonStyle}" ToolTip="取り消し線" Click="StrikeButton_Click">
                         <TextBlock Text="S" TextDecorations="Strikethrough" />
                     </ToggleButton>
+                    <ToggleButton x:Name="CenterAlignButton" Style="{StaticResource FormatButtonStyle}" ToolTip="中央揃え (Ctrl+E)" Click="CenterAlignButton_Click">
+                        <StackPanel>
+                            <Border Width="17" Height="1" Margin="0,1.5" Background="#A02E3438" />
+                            <Border Width="11" Height="1" Margin="0,1.5" Background="#A02E3438" />
+                            <Border Width="17" Height="1" Margin="0,1.5" Background="#A02E3438" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <ToggleButton x:Name="BulletButton" Style="{StaticResource FormatButtonStyle}" ToolTip="箇条書き (Ctrl+Shift+L)" Click="BulletButton_Click">
+                        <TextBlock Text="•≡" FontSize="13" />
+                    </ToggleButton>
 
-                    <Border Width="1" Height="24" Margin="6,4" Background="#283C3C36" />
+                    <Border Width="1" Height="24" Margin="4,4" Background="#283C3C36" />
 
-                    <ComboBox x:Name="FontFamilyCombo" Width="126" SelectedIndex="0" ToolTip="フォント" SelectionChanged="FontFamilyCombo_SelectionChanged">
-                        <ComboBoxItem Content="Yu Gothic UI" Tag="Yu Gothic UI" />
-                        <ComboBoxItem Content="メイリオ" Tag="Meiryo" />
-                        <ComboBoxItem Content="BIZ UDゴシック" Tag="BIZ UDPGothic" />
-                        <ComboBoxItem Content="MS ゴシック" Tag="MS Gothic" />
-                        <ComboBoxItem Content="Segoe UI" Tag="Segoe UI" />
+                    <ComboBox x:Name="FontFamilyCombo"
+                              Width="126"
+                              IsEditable="True"
+                              IsTextSearchEnabled="True"
+                              TextSearch.TextPath="DisplayName"
+                              StaysOpenOnEdit="True"
+                              MaxDropDownHeight="360"
+                              ToolTip="フォント（★はよく使うフォント）"
+                              SelectionChanged="FontFamilyCombo_SelectionChanged"
+                              VirtualizingStackPanel.IsVirtualizing="True"
+                              VirtualizingStackPanel.VirtualizationMode="Recycling">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding DisplayText}" FontFamily="{Binding FamilyName}" MinWidth="210" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
                     </ComboBox>
-                    <ComboBox x:Name="FontSizeCombo" Width="66" SelectedIndex="2" ToolTip="文字サイズ" SelectionChanged="FontSizeCombo_SelectionChanged">
+                    <ComboBox x:Name="FontSizeCombo" Width="56" SelectedIndex="2" ToolTip="文字サイズ" SelectionChanged="FontSizeCombo_SelectionChanged">
                         <ComboBoxItem Content="14" Tag="14" />
                         <ComboBoxItem Content="16" Tag="16" />
                         <ComboBoxItem Content="18" Tag="18" />
                         <ComboBoxItem Content="20" Tag="20" />
                         <ComboBoxItem Content="22" Tag="22" />
                     </ComboBox>
-                    <ComboBox x:Name="FontColorCombo" Width="90" SelectedIndex="0" ToolTip="文字色" SelectionChanged="FontColorCombo_SelectionChanged">
+                    <ComboBox x:Name="FontColorCombo" Width="72" SelectedIndex="0" ToolTip="文字色" SelectionChanged="FontColorCombo_SelectionChanged">
                         <ComboBoxItem Content="墨色" Tag="#2F3437" Foreground="#2F3437" />
                         <ComboBoxItem Content="紺色" Tag="#264A67" Foreground="#264A67" />
                         <ComboBoxItem Content="赤色" Tag="#A33E3E" Foreground="#A33E3E" />
@@ -206,7 +226,7 @@
             </Border>
 
             <Grid Grid.Row="2" ClipToBounds="True">
-                <controls:NotePaper x:Name="Paper" LineHeight="30" TopPadding="10" IsHitTestVisible="False" />
+                <controls:NotePaper x:Name="Paper" LineHeight="30" TopPadding="10" RuleLift="0" IsHitTestVisible="False" />
                 <RichTextBox x:Name="Editor"
                              BorderThickness="0"
                              Background="Transparent"
@@ -247,7 +267,7 @@
                            VerticalAlignment="Top" />
             </Grid>
 
-            <Border Grid.Row="3" Background="#CFFFFFFF" BorderBrush="#183C3C36" BorderThickness="0,1,0,0" Padding="10,8">
+            <Border x:Name="SettingsBar" Grid.Row="3" Background="#CFFFFFFF" BorderBrush="#183C3C36" BorderThickness="0,1,0,0" Padding="10,8">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
