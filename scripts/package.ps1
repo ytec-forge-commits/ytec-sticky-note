@@ -15,11 +15,21 @@ $checksumPath = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot "$product
 $projectFile = Join-Path $projectRoot 'src\YtecStickyNote\YtecStickyNote.csproj'
 $startupManifest = Join-Path $projectRoot 'src\YtecStickyNote.Startup\Cargo.toml'
 $startupExecutable = Join-Path $projectRoot 'src\YtecStickyNote.Startup\target\release\YTEC-Sticky-Note-Startup.exe'
+$manualFileName = -join @(
+    [char]0x7F6B, [char]0x5F69, '_',
+    [char]0x64CD, [char]0x4F5C, [char]0x8AAC, [char]0x660E, [char]0x66F8,
+    '.pdf'
+)
+$manualPath = Join-Path $projectRoot (Join-Path 'output\pdf' $manualFileName)
 $dotnetExe = Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'
 $cargoExe = (Get-Command cargo -ErrorAction Stop).Source
 
 if (-not (Test-Path -LiteralPath $dotnetExe)) {
     $dotnetExe = (Get-Command dotnet -ErrorAction Stop).Source
+}
+
+if (-not (Test-Path -LiteralPath $manualPath)) {
+    throw "Operation manual not found. Run scripts\build-manual.py first: $manualPath"
 }
 
 $artifactPrefix = $artifactRoot.TrimEnd('\') + '\'
@@ -59,6 +69,7 @@ Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\README-PORTABLE.txt') -Dest
 Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE.md') -Destination (Join-Path $stagingDirectory 'LICENSE.txt')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\PRIVACY.txt') -Destination (Join-Path $stagingDirectory 'PRIVACY.txt')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'CHANGELOG.md') -Destination (Join-Path $stagingDirectory 'CHANGELOG.txt')
+Copy-Item -LiteralPath $manualPath -Destination (Join-Path $stagingDirectory $manualFileName)
 Compress-Archive -Path (Join-Path $stagingDirectory '*') -DestinationPath $zipPath -CompressionLevel Optimal
 $zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerInvariant()
 Set-Content -LiteralPath $checksumPath -Value "$zipHash  $([System.IO.Path]::GetFileName($zipPath))" -Encoding ascii

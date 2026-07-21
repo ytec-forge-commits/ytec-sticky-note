@@ -65,7 +65,7 @@ dotnet run --project src/YtecStickyNote/YtecStickyNote.csproj -c Release -- --te
 powershell -ExecutionPolicy Bypass -File scripts/package.ps1
 ```
 
-`artifacts/Keisai-win-x64/`、`artifacts/Keisai-1.5.0-win-x64.zip`、SHA-256を記載した同名の `.sha256.txt` を生成します。既存の配布フォルダーにある `data` は残し、ZIPには個人の保存データを含めません。自己完結型のポータブルフォルダーなので、利用PCへの.NETランタイム導入は不要です。EXEや待機ヘルパーだけを取り出さず、フォルダー全体を一緒に移動してください。
+`artifacts/Keisai-win-x64/`、`artifacts/Keisai-1.5.0-win-x64.zip`、SHA-256を記載した同名の `.sha256.txt` を生成します。公開ZIPには `output/pdf/罫彩_操作説明書.pdf` も同梱します。既存の配布フォルダーにある `data` は残し、ZIPには個人の保存データを含めません。自己完結型のポータブルフォルダーなので、利用PCへの.NETランタイム導入は不要です。EXEや待機ヘルパーだけを取り出さず、フォルダー全体を一緒に移動してください。
 
 旧版の自動起動登録との互換性を維持するため、公開ZIPには `Keisai.exe` と同じアプリを起動する `YTEC-Sticky-Note.exe` も同梱します。新規利用者には `Keisai.exe` を案内します。
 
