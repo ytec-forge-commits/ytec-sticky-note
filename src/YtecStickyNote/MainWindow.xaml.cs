@@ -97,7 +97,7 @@ public partial class MainWindow : Window
         {
             ShowStatus("読込エラー", sticky: true);
             Editor.IsReadOnly = true;
-            MessageBox.Show(loaded.Warning, "Y-TEC 付箋", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(loaded.Warning, "罫彩", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         else if (_documentRestoreFailed)
         {
@@ -105,7 +105,7 @@ public partial class MainWindow : Window
             Editor.IsReadOnly = true;
             MessageBox.Show(
                 "本文データを復元できなかったため、安全のため編集と保存を停止しました。元の保存ファイルは変更していません。",
-                "Y-TEC 付箋",
+                "罫彩",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
@@ -441,7 +441,7 @@ public partial class MainWindow : Window
             SetAutoStartCheckState(!enabled);
             MessageBox.Show(
                 $"自動起動の設定を変更できませんでした。\n通常の起動時には登録処理を行いません。\n\n{ex.Message}",
-                "Y-TEC 付箋",
+                "罫彩",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
@@ -469,7 +469,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or Win32Exception)
         {
-            MessageBox.Show($"保存場所を開けませんでした。\n\n{ex.Message}", "Y-TEC 付箋", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show($"保存場所を開けませんでした。\n\n{ex.Message}", "罫彩", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -683,7 +683,7 @@ public partial class MainWindow : Window
             {
                 MessageBox.Show(
                     $"付箋を保存できないため、アプリを閉じませんでした。\n保存先: {_dataService.StateFilePath}\n\n{ex.Message}",
-                    "Y-TEC 付箋",
+                    "罫彩",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
             }

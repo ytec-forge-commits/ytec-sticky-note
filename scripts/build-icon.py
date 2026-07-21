@@ -10,7 +10,7 @@ ICON_SIZES = [(16, 16), (20, 20), (24, 24), (32, 32), (40, 40), (48, 48), (64, 6
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Y-TEC 付箋のPNGをWindows用ICOへ変換します。")
+    parser = argparse.ArgumentParser(description="罫彩のPNGをWindows用ICOへ変換します。")
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--preview-dir", type=Path)

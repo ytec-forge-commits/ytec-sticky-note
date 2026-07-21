@@ -1,6 +1,11 @@
-# Y-TEC 付箋
+# 罫彩（けいさい）
 
-Windowsデスクトップの好きな位置へ置ける、キャンパスノート風のシンプルな付箋アプリです。起動直後から本文を編集でき、装飾・10種類の背景・位置保存を備えます。
+Windowsデスクトップの好きな位置へ置ける、罫線ノート風のシンプルな付箋アプリです。起動直後から本文を編集でき、装飾・10種類の背景・位置保存を備えます。個人・法人を問わず無料で利用できるWindows専用フリーソフトです。
+
+- 公式配布ページ: https://ytec.cloudfree.jp/ytb/keisai/
+- 対応環境: Windows 10 / 11（64ビット）
+- インストール: 不要（ZIPを展開して `Keisai.exe` を起動）
+- 通信機能: なし
 
 ## 主な機能
 
@@ -60,7 +65,9 @@ dotnet run --project src/YtecStickyNote/YtecStickyNote.csproj -c Release -- --te
 powershell -ExecutionPolicy Bypass -File scripts/package.ps1
 ```
 
-`artifacts/YTEC-Sticky-Note-win-x64/` と `artifacts/YTEC-Sticky-Note-1.4.0-win-x64.zip` を生成します。既存の配布フォルダーにある `data` は残し、ZIPには個人の保存データを含めません。自己完結型のポータブルフォルダーなので、利用PCへの.NETランタイム導入は不要です。EXEや待機ヘルパーだけを取り出さず、フォルダー全体を一緒に移動してください。
+`artifacts/Keisai-win-x64/`、`artifacts/Keisai-1.5.0-win-x64.zip`、SHA-256を記載した同名の `.sha256.txt` を生成します。既存の配布フォルダーにある `data` は残し、ZIPには個人の保存データを含めません。自己完結型のポータブルフォルダーなので、利用PCへの.NETランタイム導入は不要です。EXEや待機ヘルパーだけを取り出さず、フォルダー全体を一緒に移動してください。
+
+旧版の自動起動登録との互換性を維持するため、公開ZIPには `Keisai.exe` と同じアプリを起動する `YTEC-Sticky-Note.exe` も同梱します。新規利用者には `Keisai.exe` を案内します。
 
 ## 対象外
 
@@ -68,4 +75,6 @@ powershell -ExecutionPolicy Bypass -File scripts/package.ps1
 
 ## ライセンスとクレジット
 
-本ソースコードとデザインの著作権はY-TECに帰属します。アプリアイコンは本プロジェクト専用に生成・加工したオリジナルです。外部UIライブラリや外部アセットは使用していません。実行基盤としてMicrosoft .NET / WPFを使用しています。
+本ソースコードとデザインの著作権はY-TECに帰属します。個人・法人、私的利用・業務利用を問わず無料で利用できます。詳しい条件は [LICENSE.md](LICENSE.md)、データの取り扱いは [docs/PRIVACY.txt](docs/PRIVACY.txt) を確認してください。
+
+アプリアイコンは本プロジェクト専用に生成・加工したオリジナルです。外部UIライブラリや外部アセットは使用していません。実行基盤としてMicrosoft .NET / WPFを使用しています。

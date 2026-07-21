@@ -16,8 +16,10 @@
     <PublishSingleFile>false</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
     <DebugType>embedded</DebugType>
-    <Version>1.4.0</Version>
-    <Product>Y-TEC 付箋</Product>
+    <Version>1.5.0</Version>
+    <AssemblyTitle>罫彩</AssemblyTitle>
+    <Product>罫彩</Product>
+    <Description>10色から選べる、ノート風デスクトップ付箋</Description>
     <Company>Y-TEC</Company>
     <Copyright>Copyright © Y-TEC 2026</Copyright>
   </PropertyGroup>

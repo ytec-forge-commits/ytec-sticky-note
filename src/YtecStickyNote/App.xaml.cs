@@ -25,8 +25,8 @@ public partial class App : WpfApplication
         if (!isFirstInstance)
         {
             MessageBox.Show(
-                "Y-TEC 付箋はすでに起動しています。\nタスクトレイのアイコンから表示できます。",
-                "Y-TEC 付箋",
+                "罫彩はすでに起動しています。\nタスクトレイのアイコンから表示できます。",
+                "罫彩",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             Shutdown();
@@ -37,7 +37,7 @@ public partial class App : WpfApplication
         {
             MessageBox.Show(
                 $"予期しないエラーが発生しました。\n\n{args.Exception.Message}",
-                "Y-TEC 付箋",
+                "罫彩",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
             args.Handled = true;
@@ -57,7 +57,7 @@ public partial class App : WpfApplication
             ShutdownMode = ShutdownMode.OnMainWindowClose;
             MessageBox.Show(
                 $"タスクトレイを準備できなかったため、タスクバーへ表示します。\n\n{ex.Message}",
-                "Y-TEC 付箋",
+                "罫彩",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
@@ -67,10 +67,10 @@ public partial class App : WpfApplication
     {
         _trayDrawingIcon = LoadTrayIcon();
 
-        var showItem = new Forms.ToolStripMenuItem("付箋を表示");
+        var showItem = new Forms.ToolStripMenuItem("罫彩を表示");
         showItem.Click += (_, _) => Dispatcher.Invoke(ShowMainWindow);
 
-        var hideItem = new Forms.ToolStripMenuItem("付箋を隠す");
+        var hideItem = new Forms.ToolStripMenuItem("罫彩を隠す");
         hideItem.Click += (_, _) => Dispatcher.Invoke(() => _mainWindow?.HideToTray());
 
         var exitItem = new Forms.ToolStripMenuItem("終了");
@@ -91,7 +91,7 @@ public partial class App : WpfApplication
         _trayIcon = new Forms.NotifyIcon
         {
             Icon = _trayDrawingIcon,
-            Text = "Y-TEC 付箋",
+            Text = "罫彩",
             ContextMenuStrip = _trayMenu,
             Visible = true
         };
