@@ -43,6 +43,37 @@ window.Loaded += async (_, _) =>
         window.Width = width;
         window.Height = height;
 
+        if (window.ShowInTaskbar)
+        {
+            throw new InvalidOperationException("付箋ウィンドウがタスクバーへ表示される設定です。");
+        }
+        if (window.Icon is null)
+        {
+            throw new InvalidOperationException("アプリアイコンが読み込まれていません。");
+        }
+        window.HideToTray();
+        if (window.IsVisible)
+        {
+            throw new InvalidOperationException("タスクトレイへ格納してもウィンドウが表示されています。");
+        }
+        window.RestoreFromTray();
+        if (!window.IsVisible)
+        {
+            throw new InvalidOperationException("タスクトレイから付箋を再表示できません。");
+        }
+        window.WindowState = WindowState.Minimized;
+        if (window.IsVisible)
+        {
+            throw new InvalidOperationException("最小化しても付箋が表示されたままです。");
+        }
+        window.RestoreFromTray();
+        window.Close();
+        if (window.IsVisible)
+        {
+            throw new InvalidOperationException("×で閉じても付箋が表示されたままです。");
+        }
+        window.RestoreFromTray();
+
         var editor = Require<RichTextBox>(window, "Editor");
         editor.Document.Blocks.Clear();
         editor.Document.Blocks.Add(CreateTitle());
@@ -91,7 +122,7 @@ window.Loaded += async (_, _) =>
     }
     finally
     {
-        window.Close();
+        window.TryExitApplication();
         app.Shutdown(failure is null ? 0 : 1);
     }
 };

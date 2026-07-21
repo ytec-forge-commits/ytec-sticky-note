@@ -24,8 +24,11 @@ public partial class MainWindow : Window
     private AppState _state = new();
     private bool _isLoading = true;
     private bool _isClosing;
+    private bool _allowApplicationExit;
+    private bool _trayAvailable = true;
     private bool _savingBlocked;
     private bool _isNormalizingDocument;
+    private WindowState _windowStateBeforeTray = WindowState.Normal;
 
     public MainWindow()
     {
@@ -119,7 +122,26 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!_allowApplicationExit && _trayAvailable)
+        {
+            e.Cancel = true;
+            HideToTray();
+            return;
+        }
+
         _isClosing = true;
+    }
+
+    private void Window_StateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState == WindowState.Minimized && !_allowApplicationExit && _trayAvailable)
+        {
+            HideToTray();
+        }
+        else if (WindowState is WindowState.Normal or WindowState.Maximized)
+        {
+            _windowStateBeforeTray = WindowState;
+        }
     }
 
     private void Window_BoundsChanged(object? sender, EventArgs e)
@@ -144,9 +166,64 @@ public partial class MainWindow : Window
         }
     }
 
-    private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_trayAvailable)
+        {
+            HideToTray();
+        }
+        else
+        {
+            WindowState = WindowState.Minimized;
+        }
+    }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
+    public void HideToTray()
+    {
+        if (WindowState is WindowState.Normal or WindowState.Maximized)
+        {
+            _windowStateBeforeTray = WindowState;
+        }
+        Hide();
+    }
+
+    public void EnableTaskbarFallback()
+    {
+        _trayAvailable = false;
+        ShowInTaskbar = true;
+    }
+
+    public void RestoreFromTray()
+    {
+        var restoredState = _windowStateBeforeTray == WindowState.Maximized
+            ? WindowState.Maximized
+            : WindowState.Normal;
+        WindowState = WindowState.Normal;
+        Show();
+        WindowState = restoredState;
+        Activate();
+        Editor.Focus();
+    }
+
+    public bool TryExitApplication()
+    {
+        if (_isClosing)
+        {
+            return true;
+        }
+
+        _allowApplicationExit = true;
+        Close();
+        if (_isClosing)
+        {
+            return true;
+        }
+
+        _allowApplicationExit = false;
+        return false;
+    }
 
     private void TopmostButton_Changed(object sender, RoutedEventArgs e)
     {

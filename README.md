@@ -12,6 +12,11 @@ Windowsデスクトップの好きな位置へ置ける、キャンパスノー�
 - 初回起動時にWindowsの自動起動を有効化（画面からオン・オフ可能）
 - 実行ファイル横の `data` フォルダーへ保存するポータブル設計
 - 保存前データの `.bak` バックアップ
+- 専用アプリアイコンとタスクトレイ常駐（タスクバーには表示しない）
+
+## タスクトレイ
+
+起動時は付箋を保存位置へ表示し、タスクバーにはボタンを出さず、通知領域へ専用アイコンを表示します。最小化または右上の×で付箋を隠し、トレイアイコンのダブルクリックで再表示できます。完全に終了するときは、トレイアイコンを右クリックして「終了」を選びます。
 
 ## 保存方式
 
@@ -44,7 +49,7 @@ dotnet run --project src/YtecStickyNote/YtecStickyNote.csproj -c Release -- --te
 powershell -ExecutionPolicy Bypass -File scripts/package.ps1
 ```
 
-`artifacts/YTEC-Sticky-Note-win-x64/` と `artifacts/YTEC-Sticky-Note-1.1.0-win-x64.zip` を生成します。既存の配布フォルダーにある `data` は残し、ZIPには個人の保存データを含めません。自己完結型のポータブルフォルダーなので、利用PCへの.NETランタイム導入は不要です。EXEだけを取り出さず、フォルダー全体を一緒に移動してください。
+`artifacts/YTEC-Sticky-Note-win-x64/` と `artifacts/YTEC-Sticky-Note-1.2.0-win-x64.zip` を生成します。既存の配布フォルダーにある `data` は残し、ZIPには個人の保存データを含めません。自己完結型のポータブルフォルダーなので、利用PCへの.NETランタイム導入は不要です。EXEだけを取り出さず、フォルダー全体を一緒に移動してください。
 
 ## 対象外
 
@@ -52,4 +57,4 @@ powershell -ExecutionPolicy Bypass -File scripts/package.ps1
 
 ## ライセンスとクレジット
 
-本ソースコードとデザインの著作権はY-TECに帰属します。外部UIライブラリや外部アセットは使用していません。実行基盤としてMicrosoft .NET / WPFを使用しています。
+本ソースコードとデザインの著作権はY-TECに帰属します。アプリアイコンは本プロジェクト専用に生成・加工したオリジナルです。外部UIライブラリや外部アセットは使用していません。実行基盤としてMicrosoft .NET / WPFを使用しています。
