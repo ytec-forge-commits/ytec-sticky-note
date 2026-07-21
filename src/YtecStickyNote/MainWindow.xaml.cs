@@ -18,7 +18,6 @@ public partial class MainWindow : Window
     private const double NoteLineHeight = 30;
     private static readonly Thickness NotePagePadding = new(64, 10, 22, 24);
     private readonly PortableDataService _dataService = new();
-    private readonly StartupService _startupService = new();
     private readonly DispatcherTimer _saveTimer;
     private readonly DispatcherTimer _statusTimer;
     private AppState _state = new();
@@ -70,25 +69,12 @@ public partial class MainWindow : Window
 
         Topmost = _state.AlwaysOnTop;
         TopmostButton.IsChecked = Topmost;
-        AutoStartCheck.IsChecked = _state.StartWithWindows;
 
         _isLoading = false;
         UpdatePlaceholder();
         UpdateFormattingButtons();
 
         var testMode = AppRuntimeOptions.IsTestMode;
-        if (!testMode)
-        {
-            try
-            {
-                _startupService.SetEnabled(_state.StartWithWindows);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
-            {
-                ShowStatus("自動起動を設定できません", sticky: true);
-            }
-        }
-
         if (!string.IsNullOrWhiteSpace(loaded.Warning))
         {
             ShowStatus("読込エラー", sticky: true);
@@ -380,36 +366,6 @@ public partial class MainWindow : Window
         yield return ThemeIvory;
     }
 
-    private void AutoStartCheck_Changed(object sender, RoutedEventArgs e)
-    {
-        if (_isLoading)
-        {
-            return;
-        }
-
-        var enabled = AutoStartCheck.IsChecked == true;
-        var testMode = AppRuntimeOptions.IsTestMode;
-
-        try
-        {
-            if (!testMode)
-            {
-                _startupService.SetEnabled(enabled);
-            }
-
-            _state.StartWithWindows = enabled;
-            ShowStatus(enabled ? "自動起動 オン" : "自動起動 オフ");
-            ScheduleSave();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
-        {
-            _isLoading = true;
-            AutoStartCheck.IsChecked = _state.StartWithWindows;
-            _isLoading = false;
-            MessageBox.Show($"自動起動の設定を変更できませんでした。\n\n{ex.Message}", "Y-TEC 付箋", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-    }
-
     private void OpenDataFolderButton_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -610,7 +566,6 @@ public partial class MainWindow : Window
         _state.RichTextRtfBase64 = Convert.ToBase64String(stream.ToArray());
         _state.PlainText = range.Text.TrimEnd('\r', '\n');
         _state.AlwaysOnTop = Topmost;
-        _state.StartWithWindows = AutoStartCheck.IsChecked == true;
 
         var bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
         _state.Window.Left = bounds.Left;

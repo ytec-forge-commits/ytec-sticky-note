@@ -285,13 +285,8 @@
                         <ToggleButton x:Name="ThemeSky" Tag="sky" Background="#EDF7FF" ToolTip="スカイ" Style="{StaticResource ThemeButtonStyle}" Click="ThemeButton_Click" />
                         <ToggleButton x:Name="ThemeIvory" Tag="ivory" Background="#FAF5EA" ToolTip="アイボリー" Style="{StaticResource ThemeButtonStyle}" Click="ThemeButton_Click" />
                     </WrapPanel>
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <CheckBox x:Name="AutoStartCheck" Content="自動起動" Margin="8,0" VerticalAlignment="Center"
-                                  ToolTip="Windowsへのサインイン時に起動" Cursor="Hand"
-                                  Checked="AutoStartCheck_Changed" Unchecked="AutoStartCheck_Changed" />
-                        <Button Width="30" Height="28" Content="↗" ToolTip="保存場所を開く" Click="OpenDataFolderButton_Click"
-                                Background="#80FFFFFF" BorderBrush="#263C3C36" BorderThickness="1" Cursor="Hand" />
-                    </StackPanel>
+                    <Button Grid.Column="2" Width="30" Height="28" Content="↗" ToolTip="保存場所を開く" Click="OpenDataFolderButton_Click"
+                            Background="#80FFFFFF" BorderBrush="#263C3C36" BorderThickness="1" Cursor="Hand" />
                 </Grid>
             </Border>
         </Grid>

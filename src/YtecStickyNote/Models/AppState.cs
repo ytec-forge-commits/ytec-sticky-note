@@ -12,8 +12,6 @@ public sealed class AppState
 
     public string ThemeId { get; set; } = "lemon";
 
-    public bool StartWithWindows { get; set; } = true;
-
     public bool AlwaysOnTop { get; set; }
 
     public WindowStateData Window { get; set; } = new();

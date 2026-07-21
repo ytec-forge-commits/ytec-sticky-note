@@ -4,7 +4,7 @@
 
 - アプリの正本は `src/YtecStickyNote`、手動テストの正本は `tests/YtecStickyNote.Tests` とする。
 - Windows専用の .NET 10 / WPF アプリとして維持し、Web化やクロスプラットフォーム化は明示依頼なしに行わない。
-- 機能は1枚の付箋、文字装飾、5背景、位置・サイズ保存、自動起動、ポータブル保存に絞る。
+- 機能は1枚の付箋、文字装飾、5背景、位置・サイズ保存、ポータブル保存に絞る。
 
 ## 保存データ
 
@@ -15,9 +15,9 @@
 
 ## Windows機能
 
-- 自動起動は `%LOCALAPPDATA%\\Y-TEC\\StickyNote` のネイティブ待機プログラムを `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run` へ登録し、現在の実行ファイルの準備完了を最大10分待つ。
+- アプリ自身からレジストリやスタートアップフォルダーを変更しない。自動起動は利用者がWindows側で設定する。
 - 配布更新では既存配布フォルダーの `data` を保護し、配布ZIPへ `data` を含めない。
-- 開発版を自動起動へ残さない。画面検証では `--test-mode` 引数を使う。
+- 画面検証では実データへ触れないよう `--test-mode` 引数を使う。
 - 付箋ウィンドウはタスクバーへ表示せず、通知領域アイコンから表示・非表示・終了を操作する。×と最小化は終了ではなく非表示とする。
 - ウィンドウ位置は仮想デスクトップ座標で保存し、モニター構成変更後も一部が画面内へ戻るよう検証する。
 
@@ -28,4 +28,4 @@
 - ビジュアルテスト: `dotnet run --project tests/YtecStickyNote.VisualTest/YtecStickyNote.VisualTest.csproj -c Release -- 520 620 artifacts/visual-test/520x620.png`
 - 配布: `powershell -ExecutionPolicy Bypass -File scripts/package.ps1`
 
-完了時は、Web相当の見た目確認とWindowsネイティブの自動起動・保存・復元確認を分けて報告する。
+完了時は、見た目確認とWindowsネイティブの保存・復元確認を分けて報告する。

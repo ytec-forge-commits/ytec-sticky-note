@@ -51,6 +51,10 @@ window.Loaded += async (_, _) =>
         {
             throw new InvalidOperationException("アプリアイコンが読み込まれていません。");
         }
+        if (window.FindName("AutoStartCheck") is not null)
+        {
+            throw new InvalidOperationException("削除した自動起動設定が画面に残っています。");
+        }
         window.HideToTray();
         if (window.IsVisible)
         {
