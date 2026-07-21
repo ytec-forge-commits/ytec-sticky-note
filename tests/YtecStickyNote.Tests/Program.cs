@@ -7,11 +7,12 @@ using YtecStickyNote.Services;
 
 var tests = new (string Name, Action Run)[]
 {
-    ("5種類の背景が一意である", TestThemes),
+    ("10種類の背景が一意である", TestThemes),
     ("保存データを往復できる", TestPortableDataRoundTrip),
     ("旧保存データのバックアップを作る", TestBackup),
     ("壊れた保存データを上書き対象にしない", TestCorruptDataProtection),
     ("旧自動起動設定を含む保存データを読み込める", TestLegacyStartupSetting),
+    ("旧形式を初回移行時の専用バックアップへ残す", TestMigrationBackup),
     ("画面外の位置を見える範囲へ戻す", TestWindowPlacement),
     ("PC内フォントを列挙してお気に入りを先頭に並べる", TestFontCatalog)
 };
@@ -36,8 +37,9 @@ return failures.Count == 0 ? 0 : 1;
 
 static void TestThemes()
 {
-    Assert(NoteTheme.All.Count == 5, "背景数が5ではありません。");
-    Assert(NoteTheme.All.Select(theme => theme.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 5, "背景IDが重複しています。");
+    Assert(NoteTheme.All.Count == 10, "背景数が10ではありません。");
+    Assert(NoteTheme.All.Select(theme => theme.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 10, "背景IDが重複しています。");
+    Assert(NoteTheme.All.Select(theme => theme.Paper).Distinct().Count() == 10, "背景色が重複しています。");
     Assert(NoteTheme.Find("unknown").Id == "lemon", "不明な背景のフォールバックが不正です。");
 }
 
@@ -50,6 +52,7 @@ static void TestPortableDataRoundTrip()
         {
             PlainText = "テスト用メモ",
             RichTextRtfBase64 = Convert.ToBase64String("{\\rtf1 テスト}"u8.ToArray()),
+            RichTextXamlPackageBase64 = Convert.ToBase64String("xaml-package-test"u8.ToArray()),
             ThemeId = "mint",
             Window = new WindowStateData { Left = 120, Top = 80, Width = 480, Height = 560 }
         };
@@ -61,6 +64,8 @@ static void TestPortableDataRoundTrip()
         Assert(loaded.CanSave, "正常な保存データで保存が停止されています。");
         Assert(loaded.Warning is null, loaded.Warning ?? "読込警告が発生しました。");
         Assert(loaded.State.PlainText == state.PlainText, "本文が一致しません。");
+        Assert(loaded.State.Version == AppState.CurrentVersion, "保存形式の版番号が更新されていません。");
+        Assert(loaded.State.RichTextXamlPackageBase64 == state.RichTextXamlPackageBase64, "XAMLパッケージが一致しません。");
         Assert(loaded.State.ThemeId == "mint", "背景が一致しません。");
         Assert(File.Exists(service.StateFilePath), "ポータブル保存先にファイルがありません。");
     });
@@ -116,6 +121,34 @@ static void TestLegacyStartupSetting()
         var loaded = service.Load();
         Assert(loaded.CanSave, loaded.Warning ?? "旧版データを読み込めません。");
         Assert(loaded.State.PlainText == "旧版データ", "旧版の本文が失われました。");
+    });
+}
+
+static void TestMigrationBackup()
+{
+    WithTemporaryDirectory(directory =>
+    {
+        var service = new PortableDataService(directory);
+        Directory.CreateDirectory(service.DataDirectory);
+        File.WriteAllText(service.StateFilePath,
+            """
+            {
+              "Version": 1,
+              "PlainText": "移行前データ",
+              "ThemeId": "sky",
+              "Window": { "Width": 520, "Height": 620 }
+            }
+            """);
+
+        var loaded = service.Load();
+        service.Save(loaded.State);
+        service.Save(loaded.State);
+
+        var migrationBackupPath = service.StateFilePath + ".v1.bak";
+        Assert(File.Exists(migrationBackupPath), "v1専用バックアップがありません。");
+        var backup = JsonSerializer.Deserialize<AppState>(File.ReadAllText(migrationBackupPath));
+        Assert(backup?.Version == 1, "移行バックアップが旧形式ではありません。");
+        Assert(backup?.PlainText == "移行前データ", "移行バックアップの本文が一致しません。");
     });
 }
 

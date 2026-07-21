@@ -188,7 +188,7 @@
                             <Border Width="17" Height="1" Margin="0,1.5" Background="#A02E3438" />
                         </StackPanel>
                     </ToggleButton>
-                    <ToggleButton x:Name="BulletButton" Style="{StaticResource FormatButtonStyle}" ToolTip="箇条書き (Ctrl+Shift+L)" Click="BulletButton_Click">
+                    <ToggleButton x:Name="BulletButton" Style="{StaticResource FormatButtonStyle}" ToolTip="箇条書き（Shift+Enterで項目内改行）" Click="BulletButton_Click">
                         <TextBlock Text="•≡" FontSize="13" />
                     </ToggleButton>
 
@@ -224,6 +224,11 @@
                         <ComboBoxItem Content="赤色" Tag="#A33E3E" Foreground="#A33E3E" />
                         <ComboBoxItem Content="緑色" Tag="#356B4C" Foreground="#356B4C" />
                         <ComboBoxItem Content="紫色" Tag="#684A79" Foreground="#684A79" />
+                        <ComboBoxItem Content="茶色" Tag="#704B35" Foreground="#704B35" />
+                        <ComboBoxItem Content="橙色" Tag="#B85C27" Foreground="#B85C27" />
+                        <ComboBoxItem Content="青緑" Tag="#24756E" Foreground="#24756E" />
+                        <ComboBoxItem Content="桃色" Tag="#B5426A" Foreground="#B5426A" />
+                        <ComboBoxItem Content="灰色" Tag="#5F686E" Foreground="#5F686E" />
                     </ComboBox>
                 </WrapPanel>
             </Border>
@@ -243,7 +248,8 @@
                              HorizontalScrollBarVisibility="Disabled"
                              SpellCheck.IsEnabled="True"
                              TextChanged="Editor_TextChanged"
-                             SelectionChanged="Editor_SelectionChanged">
+                             SelectionChanged="Editor_SelectionChanged"
+                             PreviewKeyDown="Editor_PreviewKeyDown">
                     <RichTextBox.ContextMenu>
                         <ContextMenu>
                             <MenuItem Header="切り取り" Command="ApplicationCommands.Cut" />
@@ -272,21 +278,34 @@
 
             <Border x:Name="SettingsBar" Grid.Row="3" Background="#CFFFFFFF" BorderBrush="#183C3C36" BorderThickness="0,1,0,0" Padding="10,8">
                 <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <WrapPanel VerticalAlignment="Center">
                         <TextBlock Text="背景" FontSize="11" Margin="0,0,5,0" VerticalAlignment="Center" Foreground="#5E5B54" />
                         <ToggleButton x:Name="ThemeLemon" Tag="lemon" Background="#FFF9CD" ToolTip="レモン" Style="{StaticResource ThemeButtonStyle}" Click="ThemeButton_Click" />
                         <ToggleButton x:Name="ThemeSakura" Tag="sakura" Background="#FFEFF4" ToolTip="さくら" Style="{StaticResource ThemeButtonStyle}" Click="ThemeButton_Click" />
                         <ToggleButton x:Name="ThemeMint" Tag="mint" Background="#EEF9ED" ToolTip="ミント" Style="{StaticResource ThemeButtonStyle}" Click="ThemeButton_Click" />
                         <ToggleButton x:Name="ThemeSky" Tag="sky" Background="#EDF7FF" ToolTip="スカイ" Style="{StaticResource ThemeButtonStyle}" Click="ThemeButton_Click" />
                         <ToggleButton x:Name="ThemeIvory" Tag="ivory" Background="#FAF5EA" ToolTip="アイボリー" Style="{StaticResource ThemeButtonStyle}" Click="ThemeButton_Click" />
+                        <ToggleButton x:Name="ThemeLavender" Tag="lavender" Background="#F5F0FF" ToolTip="ラベンダー" Style="{StaticResource ThemeButtonStyle}" Click="ThemeButton_Click" />
+                        <ToggleButton x:Name="ThemePeach" Tag="peach" Background="#FFF0E6" ToolTip="ピーチ" Style="{StaticResource ThemeButtonStyle}" Click="ThemeButton_Click" />
+                        <ToggleButton x:Name="ThemeAqua" Tag="aqua" Background="#EAF9F8" ToolTip="アクア" Style="{StaticResource ThemeButtonStyle}" Click="ThemeButton_Click" />
+                        <ToggleButton x:Name="ThemeGray" Tag="gray" Background="#F3F4F5" ToolTip="グレー" Style="{StaticResource ThemeButtonStyle}" Click="ThemeButton_Click" />
+                        <ToggleButton x:Name="ThemeMocha" Tag="mocha" Background="#F4ECE4" ToolTip="モカ" Style="{StaticResource ThemeButtonStyle}" Click="ThemeButton_Click" />
                     </WrapPanel>
-                    <Button Grid.Column="2" Width="30" Height="28" Content="↗" ToolTip="保存場所を開く" Click="OpenDataFolderButton_Click"
-                            Background="#80FFFFFF" BorderBrush="#263C3C36" BorderThickness="1" Cursor="Hand" />
+                    <Grid Grid.Row="1" Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <CheckBox x:Name="AutoStartCheck" Content="自動起動" VerticalAlignment="Center"
+                                  ToolTip="操作した時だけWindowsの自動起動設定を変更します" Cursor="Hand"
+                                  Checked="AutoStartCheck_Changed" Unchecked="AutoStartCheck_Changed" />
+                        <Button Grid.Column="1" Width="30" Height="28" Content="↗" ToolTip="保存場所を開く" Click="OpenDataFolderButton_Click"
+                                Background="#80FFFFFF" BorderBrush="#263C3C36" BorderThickness="1" Cursor="Hand" />
+                    </Grid>
                 </Grid>
             </Border>
         </Grid>

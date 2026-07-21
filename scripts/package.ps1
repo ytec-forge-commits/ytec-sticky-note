@@ -8,9 +8,12 @@ $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $artifactRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts'))
 $publishDirectory = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot "YTEC-Sticky-Note-$Runtime"))
 $stagingDirectory = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot ".package-staging-$Runtime"))
-$zipPath = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot "YTEC-Sticky-Note-1.3.0-$Runtime.zip"))
+$zipPath = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot "YTEC-Sticky-Note-1.4.0-$Runtime.zip"))
 $projectFile = Join-Path $projectRoot 'src\YtecStickyNote\YtecStickyNote.csproj'
+$startupManifest = Join-Path $projectRoot 'src\YtecStickyNote.Startup\Cargo.toml'
+$startupExecutable = Join-Path $projectRoot 'src\YtecStickyNote.Startup\target\release\YTEC-Sticky-Note-Startup.exe'
 $dotnetExe = Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'
+$cargoExe = (Get-Command cargo -ErrorAction Stop).Source
 
 if (-not (Test-Path -LiteralPath $dotnetExe)) {
     $dotnetExe = (Get-Command dotnet -ErrorAction Stop).Source
@@ -36,6 +39,12 @@ if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE."
 }
 
+& $cargoExe build --manifest-path $startupManifest --release --locked
+if ($LASTEXITCODE -ne 0) {
+    throw "cargo build failed with exit code $LASTEXITCODE."
+}
+
+Copy-Item -LiteralPath $startupExecutable -Destination (Join-Path $stagingDirectory 'YTEC-Sticky-Note-Startup.exe')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\README-PORTABLE.txt') -Destination (Join-Path $stagingDirectory 'README.txt')
 Compress-Archive -Path (Join-Path $stagingDirectory '*') -DestinationPath $zipPath -CompressionLevel Optimal
 

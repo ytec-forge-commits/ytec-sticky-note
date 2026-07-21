@@ -1,13 +1,15 @@
 # Y-TEC 付箋
 
-Windowsデスクトップの好きな位置へ置ける、キャンパスノート風のシンプルな付箋アプリです。起動直後から本文を編集でき、装飾・5種類の背景・位置保存を備えます。
+Windowsデスクトップの好きな位置へ置ける、キャンパスノート風のシンプルな付箋アプリです。起動直後から本文を編集でき、装飾・10種類の背景・位置保存を備えます。
 
 ## 主な機能
 
 - 太字、斜体、下線、取り消し線、中央揃え、箇条書き
-- PCにインストールされている全フォント（よく使うフォントは★付きで先頭表示）、5段階の文字サイズ、5色の文字色
-- レモン、さくら、ミント、スカイ、アイボリーの5背景
+- PCにインストールされている全フォント（よく使うフォントは★付きで先頭表示）、5段階の文字サイズ、10色の文字色
+- レモン、さくら、ミント、スカイ、アイボリー、ラベンダー、ピーチ、アクア、グレー、モカの10背景
 - 文字の下端と自然に揃う固定行高の罫線、赤い縦罫線より右側だけを使う本文領域
+- カーソル位置・選択範囲のフォント、サイズ、文字色をツールバーへ反映
+- 箇条書きの自然な折り返しと、Shift+Enterによる項目内改行
 - 本文、装飾、背景、ウィンドウ位置・サイズの自動保存
 - 実行ファイル横の `data` フォルダーへ保存するポータブル設計
 - 保存前データの `.bak` バックアップ
@@ -19,27 +21,30 @@ Windowsデスクトップの好きな位置へ置ける、キャンパスノー�
 
 ## 保存方式
 
-保存先は実行ファイルと同じ場所の `data/sticky-note.json` です。JSONは暗号化せず、装飾付き本文はRTFをBase64表現で、検索しやすいプレーンテキストも同時に保存します。ファイル更新は一時ファイル経由で行い、既存データを `.bak` へ退避してから置き換えます。
+保存先は実行ファイルと同じ場所の `data/sticky-note.json` です。JSONは暗号化せず、装飾付き本文は箇条書き構造を保持するXAMLパッケージと互換用RTFをBase64表現で、検索しやすいプレーンテキストも同時に保存します。旧版のRTFだけのデータも読み込め、新形式を読めない場合はRTFへフォールバックします。ファイル更新は一時ファイル経由で行い、既存データを `.bak` へ退避してから置き換えます。v1から初めて移行する時は、上書きされない `sticky-note.json.v1.bak` も作成します。
 
 USBメモリやGoogle Driveで持ち運ぶ場合は、EXEだけでなくフォルダー全体を移動してください。
 
 ## Windowsと一緒に起動する場合
 
-このアプリ自身は、レジストリやスタートアップフォルダーを変更しません。必要な場合は `Win + R` で `shell:startup` を開き、`YTEC-Sticky-Note.exe` のショートカットを利用者自身で配置してください。職場PCでは管理者やセキュリティ製品の運用ルールを優先してください。
+画面下部の「自動起動」を利用者が明示的にオンにした時だけ、WindowsのRun登録と待機ヘルパーを設定します。通常のアプリ起動時は登録状態を読み取るだけで、既に正しく登録されている内容を書き直しません。オフ操作も利用者が行った時だけ実行します。
 
-Google Drive上に置く場合、スタートアップフォルダーからの起動はGoogle Driveのサインイン完了を待ちません。起動順が問題になる環境では、タスクスケジューラなど職場で許可された方法で遅延起動を設定してください。
+自動起動では `%LOCALAPPDATA%\Y-TEC\StickyNote` に置いた小さな待機ヘルパーを先に起動します。Google Driveのプロセス有無ではなく、アプリ一式と登録時に存在した保存データを実際に読み取れ、配置先へ書き込める状態になるまで最大10分待ってから起動します。10分を超えた場合は、その回の起動をエラー表示なしで見送ります。
 
-### 1.2.0以前で自動起動を有効にしていた場合
+アプリの配置場所を移動した場合は、移動後のアプリで「自動起動」を一度オンにし直してください。職場PCでは管理者やセキュリティ製品の運用ルールを優先してください。明示操作時の登録も環境によっては検知対象になる可能性があります。
 
-旧版が作成した登録は、新版から自動では解除しません。可能なら更新前に旧版の「自動起動」をオフにしてください。既に更新した場合は、レジストリエディターの `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` にある値 `Y-TEC Sticky Note` だけを削除し、その後 `%LOCALAPPDATA%\Y-TEC\StickyNote` を削除できます。ほかの値やフォルダーは削除しないでください。
+### 旧版で自動起動を有効にしていた場合
+
+旧版の登録先と待機方式は互換性があります。配置場所が同じで登録内容が有効ならチェックはオンで表示され、通常起動時に書き直しません。
 
 ## 開発
 
-必要環境: Windows、.NET 10 SDK
+必要環境: Windows、.NET 10 SDK、Rust（待機ヘルパーのビルド用）
 
 ```powershell
 dotnet build src/YtecStickyNote/YtecStickyNote.csproj -c Release
 dotnet run --project tests/YtecStickyNote.Tests/YtecStickyNote.Tests.csproj -c Release
+cargo test --manifest-path src/YtecStickyNote.Startup/Cargo.toml --release --locked
 dotnet run --project tests/YtecStickyNote.VisualTest/YtecStickyNote.VisualTest.csproj -c Release -- 520 620 artifacts/visual-test/520x620.png
 ```
 
@@ -55,7 +60,7 @@ dotnet run --project src/YtecStickyNote/YtecStickyNote.csproj -c Release -- --te
 powershell -ExecutionPolicy Bypass -File scripts/package.ps1
 ```
 
-`artifacts/YTEC-Sticky-Note-win-x64/` と `artifacts/YTEC-Sticky-Note-1.3.0-win-x64.zip` を生成します。既存の配布フォルダーにある `data` は残し、ZIPには個人の保存データを含めません。自己完結型のポータブルフォルダーなので、利用PCへの.NETランタイム導入は不要です。EXEだけを取り出さず、フォルダー全体を一緒に移動してください。
+`artifacts/YTEC-Sticky-Note-win-x64/` と `artifacts/YTEC-Sticky-Note-1.4.0-win-x64.zip` を生成します。既存の配布フォルダーにある `data` は残し、ZIPには個人の保存データを含めません。自己完結型のポータブルフォルダーなので、利用PCへの.NETランタイム導入は不要です。EXEや待機ヘルパーだけを取り出さず、フォルダー全体を一緒に移動してください。
 
 ## 対象外
 

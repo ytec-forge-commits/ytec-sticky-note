@@ -59,6 +59,16 @@ public sealed class PortableDataService
         ArgumentNullException.ThrowIfNull(state);
 
         Directory.CreateDirectory(DataDirectory);
+        var previousVersion = state.Version;
+        if (File.Exists(StateFilePath) && previousVersion < AppState.CurrentVersion)
+        {
+            var migrationBackupPath = $"{StateFilePath}.v{Math.Max(0, previousVersion)}.bak";
+            if (!File.Exists(migrationBackupPath))
+            {
+                File.Copy(StateFilePath, migrationBackupPath, overwrite: false);
+            }
+        }
+
         state.Version = AppState.CurrentVersion;
         state.LastSavedAt = DateTimeOffset.Now;
 

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Security;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -18,6 +19,7 @@ public partial class MainWindow : Window
     private const double NoteLineHeight = 30;
     private static readonly Thickness NotePagePadding = new(64, 10, 22, 24);
     private readonly PortableDataService _dataService = new();
+    private readonly StartupService _startupService = new();
     private readonly DispatcherTimer _saveTimer;
     private readonly DispatcherTimer _statusTimer;
     private AppState _state = new();
@@ -27,6 +29,9 @@ public partial class MainWindow : Window
     private bool _trayAvailable = true;
     private bool _savingBlocked;
     private bool _isNormalizingDocument;
+    private bool _isUpdatingFormattingControls;
+    private bool _isUpdatingAutoStartControl;
+    private bool _documentRestoreFailed;
     private WindowState _windowStateBeforeTray = WindowState.Normal;
 
     public MainWindow()
@@ -64,22 +69,45 @@ public partial class MainWindow : Window
 
         LoadInstalledFonts();
         ApplyTheme(_state.ThemeId);
-        LoadEditorContent(_state.RichTextRtfBase64);
+        LoadEditorContent();
         NormalizeDocumentLayout();
 
         Topmost = _state.AlwaysOnTop;
         TopmostButton.IsChecked = Topmost;
 
-        _isLoading = false;
         UpdatePlaceholder();
         UpdateFormattingButtons();
 
         var testMode = AppRuntimeOptions.IsTestMode;
+        if (!testMode)
+        {
+            try
+            {
+                SetAutoStartCheckState(_startupService.IsEnabledForCurrentExecutable());
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or SecurityException)
+            {
+                SetAutoStartCheckState(false);
+                ShowStatus("自動起動状態を確認できません", sticky: true);
+            }
+        }
+        _isLoading = false;
+
         if (!string.IsNullOrWhiteSpace(loaded.Warning))
         {
             ShowStatus("読込エラー", sticky: true);
             Editor.IsReadOnly = true;
             MessageBox.Show(loaded.Warning, "Y-TEC 付箋", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        else if (_documentRestoreFailed)
+        {
+            ShowStatus("本文を復元できません", sticky: true);
+            Editor.IsReadOnly = true;
+            MessageBox.Show(
+                "本文データを復元できなかったため、安全のため編集と保存を停止しました。元の保存ファイルは変更していません。",
+                "Y-TEC 付箋",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
         }
         else
         {
@@ -259,6 +287,26 @@ public partial class MainWindow : Window
         ScheduleSave();
     }
 
+    private void Editor_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || Keyboard.Modifiers != ModifierKeys.Shift ||
+            Editor.Selection.Start.Paragraph?.Parent is not ListItem)
+        {
+            return;
+        }
+
+        if (!Editor.Selection.IsEmpty)
+        {
+            Editor.Selection.Text = string.Empty;
+        }
+
+        var lineBreak = new LineBreak(Editor.CaretPosition);
+        Editor.CaretPosition = lineBreak.ElementEnd;
+        e.Handled = true;
+        NormalizeDocumentLayout();
+        ScheduleSave();
+    }
+
     private void ToggleDecoration(TextDecorationLocation location)
     {
         var propertyValue = Editor.Selection.GetPropertyValue(Inline.TextDecorationsProperty);
@@ -288,19 +336,20 @@ public partial class MainWindow : Window
 
     private void FontFamilyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!IsLoaded || _isLoading || FontFamilyCombo.SelectedItem is not FontChoice font)
+        if (!IsLoaded || _isLoading || _isUpdatingFormattingControls || FontFamilyCombo.SelectedItem is not FontChoice font)
         {
             return;
         }
 
         Editor.Selection.ApplyPropertyValue(TextElement.FontFamilyProperty, new FontFamily(font.FamilyName));
         Editor.Focus();
+        UpdateFormattingButtons();
         ScheduleSave();
     }
 
     private void FontSizeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!IsLoaded || _isLoading || FontSizeCombo.SelectedItem is not ComboBoxItem item ||
+        if (!IsLoaded || _isLoading || _isUpdatingFormattingControls || FontSizeCombo.SelectedItem is not ComboBoxItem item ||
             !double.TryParse(item.Tag as string, out var size))
         {
             return;
@@ -308,12 +357,14 @@ public partial class MainWindow : Window
 
         Editor.Selection.ApplyPropertyValue(TextElement.FontSizeProperty, size);
         Editor.Focus();
+        UpdateFormattingButtons();
         ScheduleSave();
     }
 
     private void FontColorCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!IsLoaded || _isLoading || FontColorCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string colorText)
+        if (!IsLoaded || _isLoading || _isUpdatingFormattingControls ||
+            FontColorCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string colorText)
         {
             return;
         }
@@ -321,6 +372,7 @@ public partial class MainWindow : Window
         var brush = (SolidColorBrush)new BrushConverter().ConvertFromString(colorText)!;
         Editor.Selection.ApplyPropertyValue(TextElement.ForegroundProperty, brush);
         Editor.Focus();
+        UpdateFormattingButtons();
         ScheduleSave();
     }
 
@@ -364,6 +416,48 @@ public partial class MainWindow : Window
         yield return ThemeMint;
         yield return ThemeSky;
         yield return ThemeIvory;
+        yield return ThemeLavender;
+        yield return ThemePeach;
+        yield return ThemeAqua;
+        yield return ThemeGray;
+        yield return ThemeMocha;
+    }
+
+    private void AutoStartCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoading || _isUpdatingAutoStartControl || AppRuntimeOptions.IsTestMode)
+        {
+            return;
+        }
+
+        var enabled = AutoStartCheck.IsChecked == true;
+        try
+        {
+            _startupService.SetEnabled(enabled);
+            ShowStatus(enabled ? "自動起動を登録しました" : "自動起動を解除しました");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or SecurityException)
+        {
+            SetAutoStartCheckState(!enabled);
+            MessageBox.Show(
+                $"自動起動の設定を変更できませんでした。\n通常の起動時には登録処理を行いません。\n\n{ex.Message}",
+                "Y-TEC 付箋",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private void SetAutoStartCheckState(bool enabled)
+    {
+        _isUpdatingAutoStartControl = true;
+        try
+        {
+            AutoStartCheck.IsChecked = enabled;
+        }
+        finally
+        {
+            _isUpdatingAutoStartControl = false;
+        }
     }
 
     private void OpenDataFolderButton_Click(object sender, RoutedEventArgs e)
@@ -418,15 +512,60 @@ public partial class MainWindow : Window
 
     private void UpdateFormattingButtons()
     {
-        BoldButton.IsChecked = IsSelectionValue(TextElement.FontWeightProperty, FontWeights.Bold);
-        ItalicButton.IsChecked = IsSelectionValue(TextElement.FontStyleProperty, FontStyles.Italic);
+        _isUpdatingFormattingControls = true;
+        try
+        {
+            BoldButton.IsChecked = IsSelectionValue(TextElement.FontWeightProperty, FontWeights.Bold);
+            ItalicButton.IsChecked = IsSelectionValue(TextElement.FontStyleProperty, FontStyles.Italic);
 
-        var propertyValue = Editor.Selection.GetPropertyValue(Inline.TextDecorationsProperty);
-        var decorations = propertyValue as TextDecorationCollection;
-        UnderlineButton.IsChecked = decorations?.Any(item => item.Location == TextDecorationLocation.Underline) == true;
-        StrikeButton.IsChecked = decorations?.Any(item => item.Location == TextDecorationLocation.Strikethrough) == true;
-        CenterAlignButton.IsChecked = IsSelectionValue(Block.TextAlignmentProperty, TextAlignment.Center);
-        BulletButton.IsChecked = Editor.Selection.Start.Paragraph?.Parent is ListItem;
+            var propertyValue = Editor.Selection.GetPropertyValue(Inline.TextDecorationsProperty);
+            var decorations = propertyValue as TextDecorationCollection;
+            UnderlineButton.IsChecked = decorations?.Any(item => item.Location == TextDecorationLocation.Underline) == true;
+            StrikeButton.IsChecked = decorations?.Any(item => item.Location == TextDecorationLocation.Strikethrough) == true;
+            CenterAlignButton.IsChecked = IsSelectionValue(Block.TextAlignmentProperty, TextAlignment.Center);
+            BulletButton.IsChecked = Editor.Selection.Start.Paragraph?.Parent is ListItem;
+
+            UpdateFontFamilySelection();
+            UpdateTaggedComboSelection(FontSizeCombo, GetSelectionFontSize());
+            UpdateTaggedComboSelection(FontColorCombo, GetSelectionColor());
+        }
+        finally
+        {
+            _isUpdatingFormattingControls = false;
+        }
+    }
+
+    private void UpdateFontFamilySelection()
+    {
+        var value = Editor.Selection.GetPropertyValue(TextElement.FontFamilyProperty);
+        var familyName = value is FontFamily family ? family.Source : null;
+        var match = (FontFamilyCombo.ItemsSource as IEnumerable<FontChoice>)?.FirstOrDefault(font =>
+            string.Equals(font.FamilyName, familyName, StringComparison.OrdinalIgnoreCase));
+        FontFamilyCombo.SelectedItem = match;
+        if (match is null)
+        {
+            FontFamilyCombo.Text = string.Empty;
+        }
+    }
+
+    private string? GetSelectionFontSize()
+    {
+        var value = Editor.Selection.GetPropertyValue(TextElement.FontSizeProperty);
+        return value is double size ? size.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) : null;
+    }
+
+    private string? GetSelectionColor()
+    {
+        var value = Editor.Selection.GetPropertyValue(TextElement.ForegroundProperty);
+        return value is SolidColorBrush brush
+            ? $"#{brush.Color.R:X2}{brush.Color.G:X2}{brush.Color.B:X2}"
+            : null;
+    }
+
+    private static void UpdateTaggedComboSelection(ComboBox comboBox, string? tag)
+    {
+        comboBox.SelectedItem = comboBox.Items.OfType<ComboBoxItem>().FirstOrDefault(item =>
+            item.Tag is string itemTag && string.Equals(itemTag, tag, StringComparison.OrdinalIgnoreCase));
     }
 
     private bool IsSelectionValue(DependencyProperty property, object expected)
@@ -495,23 +634,17 @@ public partial class MainWindow : Window
         }
     }
 
-    private void LoadEditorContent(string rtfBase64)
+    private void LoadEditorContent()
     {
-        if (string.IsNullOrWhiteSpace(rtfBase64))
+        var result = DocumentPersistence.Restore(
+            Editor.Document,
+            _state.RichTextXamlPackageBase64,
+            _state.RichTextRtfBase64);
+        NormalizeDocumentLayout();
+        if (result == DocumentRestoreResult.Failed)
         {
-            return;
-        }
-
-        try
-        {
-            var bytes = Convert.FromBase64String(rtfBase64);
-            using var stream = new MemoryStream(bytes);
-            new TextRange(Editor.Document.ContentStart, Editor.Document.ContentEnd).Load(stream, DataFormats.Rtf);
-            NormalizeDocumentLayout();
-        }
-        catch (Exception ex) when (ex is FormatException or ArgumentException or IOException)
-        {
-            ShowStatus("本文を復元できません", sticky: true);
+            _documentRestoreFailed = true;
+            _savingBlocked = true;
         }
     }
 
@@ -542,7 +675,8 @@ public partial class MainWindow : Window
             ShowStatus("保存済み");
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or
+            ArgumentException or NotSupportedException)
         {
             ShowStatus("保存できません", sticky: true);
             if (showErrorDialog)
@@ -560,11 +694,10 @@ public partial class MainWindow : Window
 
     private void CaptureState()
     {
-        var range = new TextRange(Editor.Document.ContentStart, Editor.Document.ContentEnd);
-        using var stream = new MemoryStream();
-        range.Save(stream, DataFormats.Rtf);
-        _state.RichTextRtfBase64 = Convert.ToBase64String(stream.ToArray());
-        _state.PlainText = range.Text.TrimEnd('\r', '\n');
+        var document = DocumentPersistence.Capture(Editor.Document);
+        _state.RichTextXamlPackageBase64 = document.XamlPackageBase64;
+        _state.RichTextRtfBase64 = document.RtfBase64;
+        _state.PlainText = document.PlainText;
         _state.AlwaysOnTop = Topmost;
 
         var bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;

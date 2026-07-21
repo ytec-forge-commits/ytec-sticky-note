@@ -7,6 +7,8 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using YtecStickyNote;
+using YtecStickyNote.Models;
+using YtecStickyNote.Services;
 
 internal static class Program
 {
@@ -51,9 +53,10 @@ window.Loaded += async (_, _) =>
         {
             throw new InvalidOperationException("アプリアイコンが読み込まれていません。");
         }
-        if (window.FindName("AutoStartCheck") is not null)
+        var autoStartCheck = Require<CheckBox>(window, "AutoStartCheck");
+        if (autoStartCheck.IsChecked == true)
         {
-            throw new InvalidOperationException("削除した自動起動設定が画面に残っています。");
+            throw new InvalidOperationException("検証モードで自動起動が有効になっています。");
         }
         window.HideToTray();
         if (window.IsVisible)
@@ -78,7 +81,14 @@ window.Loaded += async (_, _) =>
         }
         window.RestoreFromTray();
 
+        VerifyDocumentPersistence();
+
         var editor = Require<RichTextBox>(window, "Editor");
+        VerifyFormattingToolbarSynchronization(window, editor);
+        if (Require<ComboBox>(window, "FontColorCombo").Items.Count != 10)
+        {
+            throw new InvalidOperationException("文字色が10色ではありません。");
+        }
         editor.Document.Blocks.Clear();
         editor.Document.Blocks.Add(CreateTitle());
         editor.Document.Blocks.Add(CreateLine("・資料を確認する", Brushes.DarkSlateGray));
@@ -89,7 +99,9 @@ window.Loaded += async (_, _) =>
         centered.TextAlignment = TextAlignment.Center;
         editor.Document.Blocks.Add(centered);
         editor.Document.Blocks.Add(CreateBulletList());
-        editor.CaretPosition = editor.Document.ContentEnd;
+        var titleRun = ((Paragraph)editor.Document.Blocks.FirstBlock!).Inlines.OfType<Run>().First();
+        var titleCaret = titleRun.ContentStart.GetPositionAtOffset(1, LogicalDirection.Forward) ?? titleRun.ContentStart;
+        editor.Selection.Select(titleCaret, titleCaret);
 
         var themeButtonName = themeId switch
         {
@@ -98,6 +110,11 @@ window.Loaded += async (_, _) =>
             "mint" => "ThemeMint",
             "sky" => "ThemeSky",
             "ivory" => "ThemeIvory",
+            "lavender" => "ThemeLavender",
+            "peach" => "ThemePeach",
+            "aqua" => "ThemeAqua",
+            "gray" => "ThemeGray",
+            "mocha" => "ThemeMocha",
             _ => throw new ArgumentOutOfRangeException(nameof(themeId), themeId, "不明な背景です。")
         };
         var themeButton = Require<ToggleButton>(window, themeButtonName);
@@ -182,9 +199,134 @@ static Paragraph CreateDecoratedLine()
 static List CreateBulletList()
 {
     var list = new List { MarkerStyle = TextMarkerStyle.Disc };
-    list.ListItems.Add(new ListItem(CreateLine("箇条書きの項目", Brushes.DarkSlateGray)));
+    var wrappedItem = CreateLine("箇条書きの長い項目は、次の行も文字の開始位置へ自然に揃います", Brushes.DarkSlateGray);
+    wrappedItem.Inlines.Add(new LineBreak());
+    wrappedItem.Inlines.Add(new Run("Shift+Enterの項目内改行も同じ位置を保ちます") { FontSize = 18 });
+    list.ListItems.Add(new ListItem(wrappedItem));
     list.ListItems.Add(new ListItem(CreateLine("次の項目", Brushes.DarkSlateGray)));
     return list;
+}
+
+static void VerifyDocumentPersistence()
+{
+    var paragraph = NewParagraph();
+    paragraph.Inlines.Add(new Run("箇条書きの先頭"));
+    paragraph.Inlines.Add(new LineBreak());
+    paragraph.Inlines.Add(new Run("項目内の改行"));
+    var source = new FlowDocument(new List(new ListItem(paragraph)) { MarkerStyle = TextMarkerStyle.Disc });
+
+    var snapshot = DocumentPersistence.Capture(source);
+    if (string.IsNullOrWhiteSpace(snapshot.XamlPackageBase64) || string.IsNullOrWhiteSpace(snapshot.RtfBase64))
+    {
+        throw new InvalidOperationException("本文を2形式で保存できません。");
+    }
+
+    var restored = new FlowDocument();
+    var result = DocumentPersistence.Restore(restored, snapshot.XamlPackageBase64, snapshot.RtfBase64);
+    if (result != DocumentRestoreResult.XamlPackage)
+    {
+        throw new InvalidOperationException("XAMLパッケージから本文を復元できません。");
+    }
+
+    var restoredParagraph = restored.Blocks.OfType<List>().Single().ListItems.Single().Blocks.OfType<Paragraph>().Single();
+    if (!restoredParagraph.Inlines.OfType<LineBreak>().Any())
+    {
+        throw new InvalidOperationException("箇条書き内の改行が復元されていません。");
+    }
+
+    var fallback = new FlowDocument();
+    if (DocumentPersistence.Restore(fallback, "破損データ", snapshot.RtfBase64) != DocumentRestoreResult.RtfFallback)
+    {
+        throw new InvalidOperationException("新形式が壊れた場合にRTFへフォールバックできません。");
+    }
+}
+
+static void VerifyFormattingToolbarSynchronization(MainWindow window, RichTextBox editor)
+{
+    var paragraph = NewParagraph();
+    var first = new Run("最初の範囲")
+    {
+        FontFamily = new FontFamily("Meiryo"),
+        FontSize = 14,
+        Foreground = new SolidColorBrush(Color.FromRgb(163, 62, 62))
+    };
+    var second = new Run("次の範囲")
+    {
+        FontFamily = new FontFamily("Yu Gothic UI"),
+        FontSize = 14,
+        Foreground = new SolidColorBrush(Color.FromRgb(53, 107, 76))
+    };
+    paragraph.Inlines.Add(first);
+    paragraph.Inlines.Add(new Run(" "));
+    paragraph.Inlines.Add(second);
+    editor.Document.Blocks.Clear();
+    editor.Document.Blocks.Add(paragraph);
+
+    var fontCombo = Require<ComboBox>(window, "FontFamilyCombo");
+    var sizeCombo = Require<ComboBox>(window, "FontSizeCombo");
+    var colorCombo = Require<ComboBox>(window, "FontColorCombo");
+    var repeatedFont = fontCombo.Items.OfType<FontChoice>().First(font =>
+        !string.Equals(font.FamilyName, "Meiryo", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(font.FamilyName, "Yu Gothic UI", StringComparison.OrdinalIgnoreCase));
+
+    editor.Selection.Select(first.ContentStart, first.ContentEnd);
+    AssertSelectedFont(fontCombo, "Meiryo");
+    AssertSelectedTag(sizeCombo, "14");
+    AssertSelectedTag(colorCombo, "#A33E3E");
+    fontCombo.SelectedItem = repeatedFont;
+    sizeCombo.SelectedItem = FindTaggedItem(sizeCombo, "16");
+    colorCombo.SelectedItem = FindTaggedItem(colorCombo, "#264A67");
+    AssertRunValue(first, TextElement.FontSizeProperty, 16d, "最初の範囲へ16を適用できません。");
+
+    editor.Selection.Select(second.ContentStart, second.ContentEnd);
+    AssertSelectedFont(fontCombo, "Yu Gothic UI");
+    AssertSelectedTag(sizeCombo, "14");
+    AssertSelectedTag(colorCombo, "#356B4C");
+    fontCombo.SelectedItem = repeatedFont;
+    sizeCombo.SelectedItem = FindTaggedItem(sizeCombo, "16");
+    colorCombo.SelectedItem = FindTaggedItem(colorCombo, "#264A67");
+    AssertRunValue(second, TextElement.FontSizeProperty, 16d, "別の範囲へ同じ16を続けて適用できません。");
+
+    var secondFamily = second.GetValue(TextElement.FontFamilyProperty) as FontFamily;
+    if (!string.Equals(secondFamily?.Source, repeatedFont.FamilyName, StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("別の範囲へ同じフォントを続けて適用できません。");
+    }
+
+    var secondColor = second.GetValue(TextElement.ForegroundProperty) as SolidColorBrush;
+    if (secondColor?.Color != Color.FromRgb(38, 74, 103))
+    {
+        throw new InvalidOperationException("別の範囲へ同じ文字色を続けて適用できません。");
+    }
+}
+
+static ComboBoxItem FindTaggedItem(ComboBox comboBox, string tag) =>
+    comboBox.Items.OfType<ComboBoxItem>().Single(item => string.Equals(item.Tag as string, tag, StringComparison.OrdinalIgnoreCase));
+
+static void AssertSelectedTag(ComboBox comboBox, string expected)
+{
+    if (comboBox.SelectedItem is not ComboBoxItem item ||
+        !string.Equals(item.Tag as string, expected, StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException($"ツールバーへ {expected} が反映されていません。");
+    }
+}
+
+static void AssertSelectedFont(ComboBox comboBox, string expected)
+{
+    if (comboBox.SelectedItem is not FontChoice font ||
+        !string.Equals(font.FamilyName, expected, StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException($"ツールバーへフォント {expected} が反映されていません。");
+    }
+}
+
+static void AssertRunValue(Run run, DependencyProperty property, object expected, string message)
+{
+    if (!Equals(run.GetValue(property), expected))
+    {
+        throw new InvalidOperationException(message);
+    }
 }
 
 static Paragraph NewParagraph() => new()
