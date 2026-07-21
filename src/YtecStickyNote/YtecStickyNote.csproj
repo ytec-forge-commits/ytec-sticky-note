@@ -17,6 +17,7 @@
     <PublishTrimmed>false</PublishTrimmed>
     <DebugType>embedded</DebugType>
     <Version>1.5.0</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <AssemblyTitle>罫彩</AssemblyTitle>
     <Product>罫彩</Product>
     <Description>10色から選べる、ノート風デスクトップ付箋</Description>
