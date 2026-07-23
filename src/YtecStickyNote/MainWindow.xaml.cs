@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private const double NoteLineHeight = 30;
     private static readonly Thickness NotePagePadding = new(64, 10, 22, 24);
     private readonly PortableDataService _dataService = new();
+    private readonly WindowProfileService _windowProfileService = new();
     private readonly StartupService _startupService = new();
     private readonly DispatcherTimer _saveTimer;
     private readonly DispatcherTimer _statusTimer;
@@ -32,6 +33,10 @@ public partial class MainWindow : Window
     private bool _isUpdatingFormattingControls;
     private bool _isUpdatingAutoStartControl;
     private bool _documentRestoreFailed;
+    private bool _isRestoringWindowPlacement;
+    private bool _displaySettingsSubscribed;
+    private bool _windowPlacementSavingBlocked;
+    private string _windowLayoutId = string.Empty;
     private WindowState _windowStateBeforeTray = WindowState.Normal;
 
     public MainWindow()
@@ -61,12 +66,7 @@ public partial class MainWindow : Window
         _state = loaded.State;
         _savingBlocked = !loaded.CanSave;
 
-        var bounds = WindowPlacementService.GetRestoredBounds(_state.Window);
-        Left = bounds.Left;
-        Top = bounds.Top;
-        Width = bounds.Width;
-        Height = bounds.Height;
-        WindowPlacementService.EnsureVisible(this);
+        var windowProfile = LoadAndApplyWindowProfile(MonitorLayoutService.GetCurrentLayoutId());
 
         LoadInstalledFonts();
         ApplyTheme(_state.ThemeId);
@@ -92,6 +92,8 @@ public partial class MainWindow : Window
                 ShowStatus("自動起動状態を確認できません", sticky: true);
             }
         }
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += SystemEvents_DisplaySettingsChanged;
+        _displaySettingsSubscribed = true;
         _isLoading = false;
 
         if (!string.IsNullOrWhiteSpace(loaded.Warning))
@@ -110,17 +112,41 @@ public partial class MainWindow : Window
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
+        else if (!string.IsNullOrWhiteSpace(windowProfile.Warning))
+        {
+            ShowStatus("位置設定エラー", sticky: true);
+            MessageBox.Show(windowProfile.Warning, "罫彩", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
         else
         {
             ShowStatus(testMode ? "検証モード" : "保存済み", sticky: testMode);
         }
 
-        if (!loaded.FileExisted)
+        if (!loaded.FileExisted || windowProfile.NeedsSave)
         {
             ScheduleSave();
         }
 
         Editor.Focus();
+    }
+
+    private void Window_Closed(object? sender, EventArgs e)
+    {
+        if (_displaySettingsSubscribed)
+        {
+            Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged;
+            _displaySettingsSubscribed = false;
+        }
+    }
+
+    private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
+    {
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(() => RefreshWindowLayoutIfChanged(scheduleSave: true));
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)
@@ -161,7 +187,7 @@ public partial class MainWindow : Window
 
     private void Window_BoundsChanged(object? sender, EventArgs e)
     {
-        if (!_isLoading && WindowState == WindowState.Normal)
+        if (!_isLoading && !_isRestoringWindowPlacement && WindowState == WindowState.Normal)
         {
             ScheduleSave();
         }
@@ -212,6 +238,7 @@ public partial class MainWindow : Window
 
     public void RestoreFromTray()
     {
+        RefreshWindowLayoutIfChanged(scheduleSave: true);
         var restoredState = _windowStateBeforeTray == WindowState.Maximized
             ? WindowState.Maximized
             : WindowState.Normal;
@@ -671,19 +698,24 @@ public partial class MainWindow : Window
 
         try
         {
+            RefreshWindowLayoutIfChanged(scheduleSave: false);
             CaptureState();
             _dataService.Save(_state);
+            if (!_windowPlacementSavingBlocked)
+            {
+                _windowProfileService.Save(_windowLayoutId, CaptureWindowPlacement());
+            }
             ShowStatus("保存済み");
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or
-            ArgumentException or NotSupportedException)
+            ArgumentException or NotSupportedException or System.Text.Json.JsonException)
         {
             ShowStatus("保存できません", sticky: true);
             if (showErrorDialog)
             {
                 MessageBox.Show(
-                    $"付箋を保存できないため、アプリを閉じませんでした。\n保存先: {_dataService.StateFilePath}\n\n{ex.Message}",
+                    $"付箋またはウィンドウ位置を保存できないため、アプリを閉じませんでした。\n保存先: {_dataService.DataDirectory}\n\n{ex.Message}",
                     "罫彩",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
@@ -700,12 +732,79 @@ public partial class MainWindow : Window
         _state.RichTextRtfBase64 = document.RtfBase64;
         _state.PlainText = document.PlainText;
         _state.AlwaysOnTop = Topmost;
+    }
 
+    private WindowStateData CaptureWindowPlacement()
+    {
         var bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
-        _state.Window.Left = bounds.Left;
-        _state.Window.Top = bounds.Top;
-        _state.Window.Width = bounds.Width;
-        _state.Window.Height = bounds.Height;
+        return new WindowStateData
+        {
+            Left = bounds.Left,
+            Top = bounds.Top,
+            Width = bounds.Width,
+            Height = bounds.Height
+        };
+    }
+
+    private WindowProfileLoadResult LoadAndApplyWindowProfile(string layoutId)
+    {
+        var result = _windowProfileService.LoadOrMigrate(layoutId, _state.Window);
+        _windowLayoutId = layoutId;
+        _windowPlacementSavingBlocked = !result.CanSave;
+        var savedPlacement = result.Placement ?? new WindowStateData();
+        var bounds = WindowPlacementService.GetRestoredBounds(savedPlacement);
+        var previousState = WindowState;
+
+        _isRestoringWindowPlacement = true;
+        try
+        {
+            if (previousState == WindowState.Maximized)
+            {
+                WindowState = WindowState.Normal;
+            }
+
+            Left = bounds.Left;
+            Top = bounds.Top;
+            Width = bounds.Width;
+            Height = bounds.Height;
+            WindowPlacementService.EnsureVisible(this);
+
+            if (previousState == WindowState.Maximized)
+            {
+                WindowState = WindowState.Maximized;
+            }
+        }
+        finally
+        {
+            _isRestoringWindowPlacement = false;
+        }
+
+        return result;
+    }
+
+    private void RefreshWindowLayoutIfChanged(bool scheduleSave)
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        var currentLayoutId = MonitorLayoutService.GetCurrentLayoutId();
+        if (string.Equals(currentLayoutId, _windowLayoutId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _saveTimer.Stop();
+        var result = LoadAndApplyWindowProfile(currentLayoutId);
+        if (!string.IsNullOrWhiteSpace(result.Warning))
+        {
+            ShowStatus("位置設定エラー", sticky: true);
+        }
+        else if (scheduleSave && result.NeedsSave)
+        {
+            ScheduleSave();
+        }
     }
 
     private void ShowStatus(string message, bool sticky = false)

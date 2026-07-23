@@ -49,13 +49,26 @@ public sealed class StartupService
 
         try
         {
-            var configuredTarget = File.ReadLines(ConfigFilePath).FirstOrDefault()?.Trim().TrimStart('\uFEFF');
+            var configuredLines = File.ReadAllLines(ConfigFilePath);
+            var configuredTarget = configuredLines.FirstOrDefault()?.Trim().TrimStart('\uFEFF');
             if (string.IsNullOrWhiteSpace(configuredTarget))
             {
                 return false;
             }
 
-            return string.Equals(Path.GetFullPath(configuredTarget), _executablePath, StringComparison.OrdinalIgnoreCase);
+            var configuredDataFiles = configuredLines
+                .Skip(1)
+                .Select(line => line.Trim())
+                .Where(line => line.StartsWith("data=", StringComparison.OrdinalIgnoreCase))
+                .Select(line => line["data=".Length..])
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(Path.GetFullPath)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var expectedDataFiles = GetExpectedDataFilePaths()
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return string.Equals(Path.GetFullPath(configuredTarget), _executablePath, StringComparison.OrdinalIgnoreCase) &&
+                configuredDataFiles.SetEquals(expectedDataFiles);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
@@ -119,13 +132,19 @@ public sealed class StartupService
     private string BuildConfigContents()
     {
         var contents = _executablePath;
-        var dataFilePath = Path.Combine(Path.GetDirectoryName(_executablePath)!, "data", "sticky-note.json");
-        if (File.Exists(dataFilePath))
+        foreach (var dataFilePath in GetExpectedDataFilePaths())
         {
             contents += $"{Environment.NewLine}data={dataFilePath}";
         }
 
         return contents;
+    }
+
+    private IEnumerable<string> GetExpectedDataFilePaths()
+    {
+        var dataDirectory = Path.Combine(Path.GetDirectoryName(_executablePath)!, "data");
+        yield return Path.Combine(dataDirectory, "sticky-note.json");
+        yield return Path.Combine(dataDirectory, "window-state.json");
     }
 
     private void CopyHelperWithRetry()

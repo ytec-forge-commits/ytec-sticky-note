@@ -13,6 +13,11 @@ var tests = new (string Name, Action Run)[]
     ("壊れた保存データを上書き対象にしない", TestCorruptDataProtection),
     ("旧自動起動設定を含む保存データを読み込める", TestLegacyStartupSetting),
     ("旧形式を初回移行時の専用バックアップへ残す", TestMigrationBackup),
+    ("モニター構成IDが順序に依存せず変化を識別する", TestMonitorLayoutId),
+    ("モニター構成ごとに別のウィンドウ位置を保存する", TestWindowProfiles),
+    ("旧共有位置を最初のモニター構成へ移行する", TestWindowProfileMigration),
+    ("ウィンドウ位置プロファイルを最大12件に保つ", TestWindowProfileLimit),
+    ("壊れた位置データをバックアップから復旧する", TestWindowProfileRecovery),
     ("仮想デスクトップ外の位置を見える範囲へ戻す", TestWindowPlacement),
     ("モニター構成変更後の位置を実画面内へ戻す", TestChangedMonitorPlacement),
     ("画面より大きいウィンドウを作業領域内へ収める", TestOversizedWindowPlacement),
@@ -151,6 +156,104 @@ static void TestMigrationBackup()
         var backup = JsonSerializer.Deserialize<AppState>(File.ReadAllText(migrationBackupPath));
         Assert(backup?.Version == 1, "移行バックアップが旧形式ではありません。");
         Assert(backup?.PlainText == "移行前データ", "移行バックアップの本文が一致しません。");
+    });
+}
+
+static void TestMonitorLayoutId()
+{
+    var primary = new MonitorGeometry("DISPLAY1", 0, 0, 1920, 1080, 0, 0, 1920, 1040, 1000);
+    var secondary = new MonitorGeometry("DISPLAY2", 1920, 0, 2560, 1440, 1920, 0, 2560, 1400, 1250);
+    var home = MonitorLayoutService.CreateLayoutId([primary, secondary]);
+    var reversed = MonitorLayoutService.CreateLayoutId([secondary, primary]);
+    var work = MonitorLayoutService.CreateLayoutId(
+        [primary, secondary with { Width = 1920, Height = 1080, WorkWidth = 1920, WorkHeight = 1040, ScaleMilli = 1000 }]);
+
+    Assert(home == reversed, "モニター列挙順によって構成IDが変化しました。");
+    Assert(home.StartsWith("layout-2-", StringComparison.Ordinal), "モニター数が構成IDへ反映されていません。");
+    Assert(home != work, "解像度・作業領域・拡大率の違いを識別できません。");
+}
+
+static void TestWindowProfiles()
+{
+    WithTemporaryDirectory(directory =>
+    {
+        var service = new WindowProfileService(directory);
+        var home = new WindowStateData { Left = 120, Top = 80, Width = 520, Height = 620 };
+        var work = new WindowStateData { Left = 2100, Top = 140, Width = 480, Height = 560 };
+
+        service.Save("layout-home", home);
+        service.Save("layout-work", work);
+
+        var loadedHome = service.LoadOrMigrate("layout-home", new WindowStateData());
+        var loadedWork = service.LoadOrMigrate("layout-work", new WindowStateData());
+
+        Assert(loadedHome.Placement?.Left == 120, "自宅用の位置を復元できません。");
+        Assert(loadedHome.Placement?.Width == 520, "自宅用のサイズを復元できません。");
+        Assert(loadedWork.Placement?.Left == 2100, "職場用の位置を復元できません。");
+        Assert(loadedWork.Placement?.Width == 480, "職場用のサイズを復元できません。");
+    });
+}
+
+static void TestWindowProfileMigration()
+{
+    WithTemporaryDirectory(directory =>
+    {
+        var service = new WindowProfileService(directory);
+        var legacy = new WindowStateData { Left = 840, Top = 90, Width = 500, Height = 600 };
+
+        var migrated = service.LoadOrMigrate("layout-current", legacy);
+        var unknown = service.LoadOrMigrate("layout-other", legacy);
+
+        Assert(migrated.CanSave, migrated.Warning ?? "旧共有位置を移行できません。");
+        Assert(migrated.Placement?.Left == legacy.Left, "移行後の位置が旧共有位置と一致しません。");
+        Assert(migrated.NeedsSave, "画面内補正後の再保存が要求されていません。");
+        Assert(File.Exists(service.StateFilePath), "PC別の位置ファイルが作成されていません。");
+        Assert(unknown.Placement is null, "未知のモニター構成へ旧共有位置が流用されています。");
+        Assert(unknown.NeedsSave, "未知のモニター構成が新規保存対象になっていません。");
+    });
+}
+
+static void TestWindowProfileLimit()
+{
+    WithTemporaryDirectory(directory =>
+    {
+        var service = new WindowProfileService(directory);
+        for (var index = 0; index < WindowProfileService.MaximumProfiles + 3; index++)
+        {
+            service.Save(
+                $"layout-{index}",
+                new WindowStateData { Left = index * 10, Top = index * 5, Width = 520, Height = 620 });
+        }
+
+        var state = JsonSerializer.Deserialize<WindowProfileState>(
+            File.ReadAllText(service.StateFilePath),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        var profiles = state?.Profiles ?? throw new InvalidOperationException("位置プロファイルを読み込めません。");
+        Assert(profiles.Count == WindowProfileService.MaximumProfiles, "位置プロファイル数が上限を超えています。");
+        Assert(profiles.All(profile => profile.LayoutId is not "layout-0" and not "layout-1" and not "layout-2"),
+            "古い位置プロファイルが上限超過時に整理されていません。");
+    });
+}
+
+static void TestWindowProfileRecovery()
+{
+    WithTemporaryDirectory(directory =>
+    {
+        var service = new WindowProfileService(directory);
+        service.Save("layout-home", new WindowStateData { Left = 100, Top = 80, Width = 520, Height = 620 });
+        service.Save("layout-home", new WindowStateData { Left = 200, Top = 160, Width = 520, Height = 620 });
+        File.WriteAllText(service.StateFilePath, "{ broken json");
+
+        var recovered = service.LoadOrMigrate("layout-home", new WindowStateData());
+
+        Assert(recovered.CanSave, recovered.Warning ?? "バックアップから復旧できません。");
+        Assert(recovered.Placement?.Left == 100, "直前バックアップの位置へ復旧していません。");
+        Assert(Directory.GetFiles(service.DataDirectory, "window-state.corrupt-*.json").Length == 1,
+            "壊れた位置ファイルが退避されていません。");
+        Assert(JsonSerializer.Deserialize<WindowProfileState>(
+            File.ReadAllText(service.StateFilePath),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) is not null,
+            "復旧後の位置ファイルを読み込めません。");
     });
 }
 

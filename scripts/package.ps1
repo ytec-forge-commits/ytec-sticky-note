@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $productName = 'Keisai'
-$productVersion = '1.5.1'
+$productVersion = '1.5.2'
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $artifactRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts'))
 $publishDirectory = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot "$productName-$Runtime"))

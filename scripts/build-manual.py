@@ -404,7 +404,7 @@ def draw_page(canvas, doc) -> None:
     canvas.drawString(20 * mm, 11 * mm, "罫彩 操作説明書")
     canvas.setFont("YuGothic", 7.5)
     canvas.setFillColor(MUTED)
-    canvas.drawRightString(width - 20 * mm, 11 * mm, f"1.5.1  |  {page}")
+    canvas.drawRightString(width - 20 * mm, 11 * mm, f"1.5.2  |  {page}")
     canvas.setStrokeColor(LINE)
     canvas.setLineWidth(0.4)
     canvas.line(20 * mm, 16 * mm, width - 20 * mm, 16 * mm)
@@ -590,19 +590,25 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
     story.append(Paragraph("保存は自動", styles["section"]))
     story.append(
         Paragraph(
-            "本文、文字装飾、背景、ウィンドウの位置と大きさは自動保存されます。保存先はアプリと同じフォルダー内の data フォルダーです。通常は保存操作を意識する必要がありません。",
+            "本文、文字装飾、背景、ウィンドウの位置と大きさは自動保存されます。本文と外観、ウィンドウ位置は別ファイルに分け、アプリと同じフォルダー内の data へ保存します。",
             styles["body"],
         )
     )
     story.append(
         two_cards(
             "主な保存ファイル",
-            "data/sticky-note.json<br/>data/sticky-note.json.bak",
+            "本文・外観: data/sticky-note.json<br/>位置・サイズ: data/window-state.json",
             "バックアップ",
-            "大切な内容は、アプリを終了してから data フォルダーごと別の場所へコピーしてください。",
+            "各保存ファイルの直前データを .bak または backup.json として残します。",
             styles,
             PALE_BLUE,
             PALE_YELLOW,
+        )
+    )
+    story.append(
+        Paragraph(
+            "位置とサイズは、モニター数・配置・解像度・作業領域・拡大率の組み合わせごとに最大12件保存します。自宅と職場で異なる位置を使い分けられます。",
+            styles["body"],
         )
     )
     story.append(Paragraph("USBメモリやGoogle Driveで持ち運ぶ", styles["section"]))
@@ -660,8 +666,14 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
     story.append(Paragraph("Google Drive上から自動起動する場合", styles["section"]))
     story.append(
         Paragraph(
-            "自動起動用の補助処理は、Google Driveのサインインと同期準備が終わり、アプリのファイルを読み書きできる状態になるまで待機します。待機は最大10分です。PCやネットワークの状態によっては起動まで時間がかかります。",
+            "自動起動用の補助処理は、Google Driveのサインインと同期準備が終わり、アプリ一式と本文・位置の両方の保存ファイルを読み書きできる状態になるまで待機します。待機は最大10分です。",
             styles["body"],
+        )
+    )
+    story.append(
+        Paragraph(
+            "1.5.1以前から自動起動を使っている場合は、1.5.2への更新後に［自動起動］を一度オンにし直してください。通常起動だけで旧登録を書き換えることはありません。",
+            styles["small"],
         )
     )
     story.append(
@@ -677,7 +689,7 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
     # 6. Troubleshooting and specifications
     story.append(Paragraph("困ったときは", styles["page_title"]))
     troubleshooting = [
-        ("起動しても画面が見えない", "1.5.1以降は、モニター数・配置・解像度が変わっても接続中の画面内へ自動補正します。まずタスクトレイの罫彩アイコンをダブルクリックしてください。"),
+        ("起動しても画面が見えない", "1.5.2以降はモニター構成ごとの位置を復元し、画面外なら接続中の画面内へ自動補正します。まずトレイアイコンをダブルクリックしてください。"),
         ("保存した文章が見つからない", "Keisai.exe だけを別の場所へ移していないか確認してください。保存データはアプリと同じフォルダー内の data にあります。"),
         ("Google Driveから自動起動しない", "サインインと同期が完了しているか、ファイルをローカルで利用できるか確認してください。10分を超えた場合は手動で起動してください。"),
         ("フォントの見た目が変わった", "使用したフォントが現在のPCへインストールされているか確認してください。別PCにないフォントは代替表示になることがあります。"),
@@ -724,7 +736,7 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
         )
     )
     story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph("罫彩 1.5.1　操作説明書", styles["cover_kicker"]))
+    story.append(Paragraph("罫彩 1.5.2　操作説明書", styles["cover_kicker"]))
 
     return story
 
@@ -747,7 +759,7 @@ def main() -> None:
         bottomMargin=21 * mm,
         title="罫彩 操作説明書",
         author="Y-TEC",
-        subject="Windows専用フリーソフト 罫彩 1.5.1 の操作説明書",
+        subject="Windows専用フリーソフト 罫彩 1.5.2 の操作説明書",
         creator="Y-TEC",
     )
     frame = Frame(

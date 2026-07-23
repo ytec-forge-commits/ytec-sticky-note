@@ -30,7 +30,7 @@ struct Options {
 #[derive(Debug, PartialEq)]
 struct StartupTarget {
     executable: PathBuf,
-    data_file: Option<PathBuf>,
+    data_files: Vec<PathBuf>,
 }
 
 fn main() {
@@ -108,15 +108,17 @@ fn read_target(config_path: &Path) -> Option<StartupTarget> {
         return None;
     }
 
-    let data_file = lines.find_map(|line| {
-        line.trim()
-            .strip_prefix("data=")
-            .filter(|path| !path.is_empty())
-            .map(PathBuf::from)
-    });
+    let data_files = lines
+        .filter_map(|line| {
+            line.trim()
+                .strip_prefix("data=")
+                .filter(|path| !path.is_empty())
+                .map(PathBuf::from)
+        })
+        .collect();
     Some(StartupTarget {
         executable: PathBuf::from(executable),
-        data_file,
+        data_files,
     })
 }
 
@@ -131,9 +133,9 @@ fn required_files_available(target: &StartupTarget) -> bool {
             .map(|file_name| directory.join(file_name))
             .all(|path| can_open(&path))
         && target
-            .data_file
-            .as_ref()
-            .is_none_or(|path| can_open(path) && path.parent().is_some_and(directory_is_writable))
+            .data_files
+            .iter()
+            .all(|path| can_open(path) && path.parent().is_some_and(directory_is_writable))
         && directory_is_writable(directory)
 }
 
@@ -186,7 +188,7 @@ mod tests {
         let executable = directory.join("YTEC-Sticky-Note.exe");
         let target = StartupTarget {
             executable: executable.clone(),
-            data_file: None,
+            data_files: Vec::new(),
         };
         fs::write(&executable, b"test").unwrap();
         assert!(!required_files_available(&target));
@@ -205,7 +207,7 @@ mod tests {
         let config = directory.join("startup-target.txt");
         fs::write(
             &config,
-            "\u{feff}D:\\Drive\\YTEC-Sticky-Note.exe\r\ndata=D:\\Drive\\data\\sticky-note.json\r\n",
+            "\u{feff}D:\\Drive\\YTEC-Sticky-Note.exe\r\ndata=D:\\Drive\\data\\sticky-note.json\r\ndata=D:\\Drive\\data\\window-state.json\r\n",
         )
         .unwrap();
 
@@ -213,9 +215,38 @@ mod tests {
             read_target(&config),
             Some(StartupTarget {
                 executable: PathBuf::from("D:\\Drive\\YTEC-Sticky-Note.exe"),
-                data_file: Some(PathBuf::from("D:\\Drive\\data\\sticky-note.json")),
+                data_files: vec![
+                    PathBuf::from("D:\\Drive\\data\\sticky-note.json"),
+                    PathBuf::from("D:\\Drive\\data\\window-state.json"),
+                ],
             })
         );
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn readiness_requires_every_configured_data_file() {
+        let directory = temporary_directory("multiple-data-files");
+        let executable = directory.join("YTEC-Sticky-Note.exe");
+        fs::write(&executable, b"test").unwrap();
+        for file_name in REQUIRED_SIBLINGS {
+            fs::write(directory.join(file_name), b"test").unwrap();
+        }
+
+        let data_directory = directory.join("data");
+        fs::create_dir_all(&data_directory).unwrap();
+        let sticky_note = data_directory.join("sticky-note.json");
+        let window_state = data_directory.join("window-state.json");
+        let target = StartupTarget {
+            executable,
+            data_files: vec![sticky_note.clone(), window_state.clone()],
+        };
+
+        fs::write(&sticky_note, b"{}").unwrap();
+        assert!(!required_files_available(&target));
+        fs::write(&window_state, b"{}").unwrap();
+        assert!(required_files_available(&target));
 
         fs::remove_dir_all(directory).unwrap();
     }
@@ -252,7 +283,7 @@ mod tests {
             found,
             Some(StartupTarget {
                 executable,
-                data_file: None,
+                data_files: Vec::new(),
             })
         );
         fs::remove_dir_all(directory).unwrap();

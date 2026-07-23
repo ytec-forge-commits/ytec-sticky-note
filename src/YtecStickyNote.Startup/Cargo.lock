@@ -4,4 +4,4 @@ version = 4
 
 [[package]]
 name = "ytec-sticky-note-startup"
-version = "1.5.1"
+version = "1.5.2"
