@@ -20,7 +20,10 @@ public partial class App : WpfApplication
     {
         base.OnStartup(e);
 
-        _singleInstanceMutex = new Mutex(true, "Local\\YTEC-Sticky-Note-SingleInstance", out var isFirstInstance);
+        var mutexName = AppRuntimeOptions.IsTestMode
+            ? $"Local\\YTEC-Sticky-Note-TestMode-{Environment.ProcessId}"
+            : "Local\\YTEC-Sticky-Note-SingleInstance";
+        _singleInstanceMutex = new Mutex(true, mutexName, out var isFirstInstance);
         _ownsSingleInstanceMutex = isFirstInstance;
         if (!isFirstInstance)
         {

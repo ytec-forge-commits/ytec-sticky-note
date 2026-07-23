@@ -66,6 +66,7 @@ public partial class MainWindow : Window
         Top = bounds.Top;
         Width = bounds.Width;
         Height = bounds.Height;
+        WindowPlacementService.EnsureVisible(this);
 
         LoadInstalledFonts();
         ApplyTheme(_state.ThemeId);

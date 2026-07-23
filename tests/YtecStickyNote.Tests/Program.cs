@@ -13,7 +13,9 @@ var tests = new (string Name, Action Run)[]
     ("壊れた保存データを上書き対象にしない", TestCorruptDataProtection),
     ("旧自動起動設定を含む保存データを読み込める", TestLegacyStartupSetting),
     ("旧形式を初回移行時の専用バックアップへ残す", TestMigrationBackup),
-    ("画面外の位置を見える範囲へ戻す", TestWindowPlacement),
+    ("仮想デスクトップ外の位置を見える範囲へ戻す", TestWindowPlacement),
+    ("モニター構成変更後の位置を実画面内へ戻す", TestChangedMonitorPlacement),
+    ("画面より大きいウィンドウを作業領域内へ収める", TestOversizedWindowPlacement),
     ("PC内フォントを列挙してお気に入りを先頭に並べる", TestFontCatalog)
 };
 
@@ -162,6 +164,29 @@ static void TestWindowPlacement()
     Assert(restored.Left <= 1830, "ウィンドウの横位置が画面外です。");
     Assert(restored.Top >= 0 && restored.Top <= 1032, "ウィンドウの縦位置が画面外です。");
     Assert(restored.Width >= 360 && restored.Height >= 400, "最小サイズを下回っています。");
+}
+
+static void TestChangedMonitorPlacement()
+{
+    var currentWorkArea = new Rect(1920, 0, 1920, 1040);
+    var savedOnRemovedMonitor = new Rect(3750, 1240, 520, 620);
+    var restored = WindowPlacementService.ConstrainToWorkArea(savedOnRemovedMonitor, currentWorkArea);
+
+    Assert(restored.Left >= currentWorkArea.Left, "左端が実在モニターの外です。");
+    Assert(restored.Top >= currentWorkArea.Top, "上端が実在モニターの外です。");
+    Assert(restored.Right <= currentWorkArea.Right, "右端が実在モニターの外です。");
+    Assert(restored.Bottom <= currentWorkArea.Bottom, "下端が実在モニターの外です。");
+    Assert(restored.Width == savedOnRemovedMonitor.Width, "収まるサイズが不要に変更されました。");
+    Assert(restored.Height == savedOnRemovedMonitor.Height, "収まるサイズが不要に変更されました。");
+}
+
+static void TestOversizedWindowPlacement()
+{
+    var currentWorkArea = new Rect(-1600, 40, 1600, 860);
+    var oversized = new Rect(-2400, -400, 2200, 1200);
+    var restored = WindowPlacementService.ConstrainToWorkArea(oversized, currentWorkArea);
+
+    Assert(restored == currentWorkArea, "画面より大きいウィンドウが作業領域全体へ収まっていません。");
 }
 
 static void TestFontCatalog()
