@@ -18,6 +18,9 @@ var tests = new (string Name, Action Run)[]
     ("旧共有位置を最初のモニター構成へ移行する", TestWindowProfileMigration),
     ("ウィンドウ位置プロファイルを最大12件に保つ", TestWindowProfileLimit),
     ("壊れた位置データをバックアップから復旧する", TestWindowProfileRecovery),
+    ("画面構成が3回安定するまで復元を待つ", TestDisplayTransitionStabilization),
+    ("画面切断中の自動移動を保存しない", TestDisplayTransitionBlocksPlacementSave),
+    ("外部画面の復帰後に元の位置とサイズを復元する", TestDisplayReconnectRestoresPlacement),
     ("仮想デスクトップ外の位置を見える範囲へ戻す", TestWindowPlacement),
     ("モニター構成変更後の位置を実画面内へ戻す", TestChangedMonitorPlacement),
     ("画面より大きいウィンドウを作業領域内へ収める", TestOversizedWindowPlacement),
@@ -254,6 +257,63 @@ static void TestWindowProfileRecovery()
             File.ReadAllText(service.StateFilePath),
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) is not null,
             "復旧後の位置ファイルを読み込めません。");
+    });
+}
+
+static void TestDisplayTransitionStabilization()
+{
+    var session = new WindowLayoutSession(requiredStableSamples: 3);
+    session.Initialize("layout-home", placementDirty: false);
+    session.BeginDisplayTransition();
+
+    Assert(session.ObserveDisplayLayout("layout-single") is null, "1回目の観測で構成が確定しました。");
+    Assert(session.ObserveDisplayLayout("layout-home") is null, "構成の揺れをまたいで観測回数が加算されました。");
+    Assert(session.ObserveDisplayLayout("layout-home") is null, "2回目の観測で構成が確定しました。");
+    Assert(session.ObserveDisplayLayout("layout-home") == "layout-home", "安定した構成を確定できません。");
+}
+
+static void TestDisplayTransitionBlocksPlacementSave()
+{
+    var session = new WindowLayoutSession(requiredStableSamples: 3);
+    session.Initialize("layout-home", placementDirty: false);
+    session.MarkUserPlacementChanged();
+    Assert(session.CanSavePlacement("layout-home"), "利用者が変更した位置を保存できません。");
+
+    session.BeginDisplayTransition();
+    session.MarkUserPlacementChanged();
+    Assert(!session.CanSavePlacement("layout-home"), "画面切断中の位置保存が許可されています。");
+    Assert(!session.CanSavePlacement("layout-single"), "一時的な画面構成へ位置を保存できます。");
+}
+
+static void TestDisplayReconnectRestoresPlacement()
+{
+    WithTemporaryDirectory(directory =>
+    {
+        var service = new WindowProfileService(directory);
+        var home = new WindowStateData { Left = 2120, Top = 120, Width = 520, Height = 620 };
+        var temporarySingleDisplay = new WindowStateData { Left = 10, Top = 10, Width = 360, Height = 400 };
+        service.Save("layout-home", home);
+
+        var session = new WindowLayoutSession(requiredStableSamples: 3);
+        session.Initialize("layout-home", placementDirty: false);
+        session.BeginDisplayTransition();
+        session.ObserveDisplayLayout("layout-single");
+        session.ObserveDisplayLayout("layout-single");
+        var singleLayout = session.ObserveDisplayLayout("layout-single");
+        Assert(singleLayout == "layout-single", "切断後の安定した構成を確定できません。");
+
+        session.ApplyStableLayout(singleLayout!, placementDirty: true);
+        service.Save(singleLayout!, temporarySingleDisplay);
+        session.MarkPlacementSaved();
+
+        session.BeginDisplayTransition();
+        session.ObserveDisplayLayout("layout-home");
+        session.ObserveDisplayLayout("layout-home");
+        var restoredLayout = session.ObserveDisplayLayout("layout-home");
+        var restored = service.LoadOrMigrate(restoredLayout!, new WindowStateData()).Placement;
+
+        Assert(restored?.Left == home.Left && restored.Top == home.Top, "外部画面上の元の位置が失われました。");
+        Assert(restored?.Width == home.Width && restored.Height == home.Height, "外部画面上の元のサイズが失われました。");
     });
 }
 

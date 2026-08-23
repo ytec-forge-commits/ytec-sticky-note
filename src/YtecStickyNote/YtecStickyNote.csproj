@@ -16,7 +16,7 @@
     <PublishSingleFile>false</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
     <DebugType>embedded</DebugType>
-    <Version>1.5.2</Version>
+    <Version>1.5.3</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <AssemblyTitle>罫彩</AssemblyTitle>
     <Product>罫彩</Product>

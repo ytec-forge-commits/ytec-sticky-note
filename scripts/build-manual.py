@@ -404,7 +404,7 @@ def draw_page(canvas, doc) -> None:
     canvas.drawString(20 * mm, 11 * mm, "罫彩 操作説明書")
     canvas.setFont("YuGothic", 7.5)
     canvas.setFillColor(MUTED)
-    canvas.drawRightString(width - 20 * mm, 11 * mm, f"1.5.2  |  {page}")
+    canvas.drawRightString(width - 20 * mm, 11 * mm, f"1.5.3  |  {page}")
     canvas.setStrokeColor(LINE)
     canvas.setLineWidth(0.4)
     canvas.line(20 * mm, 16 * mm, width - 20 * mm, 16 * mm)
@@ -456,7 +456,7 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
         )
     )
     story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph("対応環境: Windows 10 / 11（64-bit）　　発行: 2026年7月23日", styles["small"]))
+    story.append(Paragraph("対応環境: Windows 10 / 11（64-bit）　　発行: 2026年8月23日", styles["small"]))
     story.append(PageBreak())
 
     # 2. Screen overview
@@ -666,7 +666,7 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
     story.append(Paragraph("Google Drive上から自動起動する場合", styles["section"]))
     story.append(
         Paragraph(
-            "自動起動用の補助処理は、Google Driveのサインインと同期準備が終わり、アプリ一式と本文・位置の両方の保存ファイルを読み書きできる状態になるまで待機します。待機は最大10分です。",
+            "Koyomadoと同様に、Google Drive外のローカル待機プログラムを先に起動します。すでに罫彩が起動していれば二重起動せず、Google Driveのサインインと同期準備が終わり、アプリ一式と本文・位置の両方の保存ファイルを読み書きできる状態が安定するまで待機します。待機は最大10分です。",
             styles["body"],
         )
     )
@@ -689,7 +689,8 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
     # 6. Troubleshooting and specifications
     story.append(Paragraph("困ったときは", styles["page_title"]))
     troubleshooting = [
-        ("起動しても画面が見えない", "1.5.2以降はモニター構成ごとの位置を復元し、画面外なら接続中の画面内へ自動補正します。まずトレイアイコンをダブルクリックしてください。"),
+        ("起動しても画面が見えない", "モニター構成ごとの位置を復元し、画面外なら接続中の画面内へ自動補正します。まずトレイアイコンをダブルクリックしてください。"),
+        ("外部モニターの復帰後に位置が変わる", "1.5.3以降は構成が安定してから保存済みの位置とサイズを復元します。復帰後2秒ほど待ってからご確認ください。"),
         ("保存した文章が見つからない", "Keisai.exe だけを別の場所へ移していないか確認してください。保存データはアプリと同じフォルダー内の data にあります。"),
         ("Google Driveから自動起動しない", "サインインと同期が完了しているか、ファイルをローカルで利用できるか確認してください。10分を超えた場合は手動で起動してください。"),
         ("フォントの見た目が変わった", "使用したフォントが現在のPCへインストールされているか確認してください。別PCにないフォントは代替表示になることがあります。"),
@@ -736,7 +737,7 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
         )
     )
     story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph("罫彩 1.5.2　操作説明書", styles["cover_kicker"]))
+    story.append(Paragraph("罫彩 1.5.3　操作説明書", styles["cover_kicker"]))
 
     return story
 
@@ -759,7 +760,7 @@ def main() -> None:
         bottomMargin=21 * mm,
         title="罫彩 操作説明書",
         author="Y-TEC",
-        subject="Windows専用フリーソフト 罫彩 1.5.2 の操作説明書",
+        subject="Windows専用フリーソフト 罫彩 1.5.3 の操作説明書",
         creator="Y-TEC",
     )
     frame = Frame(

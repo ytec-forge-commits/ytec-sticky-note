@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $productName = 'Keisai'
-$productVersion = '1.5.2'
+$productVersion = '1.5.3'
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $artifactRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts'))
 $publishDirectory = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot "$productName-$Runtime"))
@@ -22,10 +22,15 @@ $manualFileName = -join @(
 )
 $manualPath = Join-Path $projectRoot (Join-Path 'output\pdf' $manualFileName)
 $dotnetExe = Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'
+$userDotnetExe = Join-Path $env:USERPROFILE '.dotnet\dotnet.exe'
 $cargoExe = (Get-Command cargo -ErrorAction Stop).Source
 
 if (-not (Test-Path -LiteralPath $dotnetExe)) {
-    $dotnetExe = (Get-Command dotnet -ErrorAction Stop).Source
+    $dotnetExe = if (Test-Path -LiteralPath $userDotnetExe) {
+        $userDotnetExe
+    } else {
+        (Get-Command dotnet -ErrorAction Stop).Source
+    }
 }
 
 if (-not (Test-Path -LiteralPath $manualPath)) {
@@ -66,7 +71,9 @@ Copy-Item -LiteralPath (Join-Path $stagingDirectory 'YTEC-Sticky-Note.dll') -Des
 Copy-Item -LiteralPath (Join-Path $stagingDirectory 'YTEC-Sticky-Note.deps.json') -Destination (Join-Path $stagingDirectory 'Keisai.deps.json')
 Copy-Item -LiteralPath (Join-Path $stagingDirectory 'YTEC-Sticky-Note.runtimeconfig.json') -Destination (Join-Path $stagingDirectory 'Keisai.runtimeconfig.json')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\README-PORTABLE.txt') -Destination (Join-Path $stagingDirectory 'README.txt')
-Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE.md') -Destination (Join-Path $stagingDirectory 'LICENSE.txt')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE.txt') -Destination (Join-Path $stagingDirectory 'LICENSE.txt')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'NOTICE') -Destination (Join-Path $stagingDirectory 'NOTICE.txt')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $stagingDirectory 'THIRD_PARTY_NOTICES.txt')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\PRIVACY.txt') -Destination (Join-Path $stagingDirectory 'PRIVACY.txt')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'CHANGELOG.md') -Destination (Join-Path $stagingDirectory 'CHANGELOG.txt')
 Copy-Item -LiteralPath $manualPath -Destination (Join-Path $stagingDirectory $manualFileName)

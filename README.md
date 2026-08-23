@@ -6,6 +6,7 @@ Windowsデスクトップの好きな位置へ置ける、罫線ノート風の�
 - 対応環境: Windows 10 / 11（64ビット）
 - インストール: 不要（ZIPを展開して `Keisai.exe` を起動）
 - 通信機能: なし
+- ソースコード: https://github.com/ytec-commits/ytec-sticky-note
 
 ## 主な機能
 
@@ -30,13 +31,15 @@ Windowsデスクトップの好きな位置へ置ける、罫線ノート風の�
 
 ウィンドウ位置とサイズは `data/window-state.json` へ分離し、モニター数・配置・解像度・作業領域・拡大率から作る構成IDごとに最大12件保存します。自宅3画面と職場2画面などを別の位置として復元でき、直前データは `window-state.backup.json` へ保存します。1.5.1以前の共有位置は、1.5.2を最初に起動したモニター構成へ自動移行します。
 
+外部モニターのスリープ・切断・復帰時は、画面構成が安定するまで位置保存を止めます。Windowsが一時的に移動・縮小した値で保存済み位置を上書きせず、安定後に該当するモニター構成用の位置とサイズを復元します。
+
 USBメモリやGoogle Driveで持ち運ぶ場合は、EXEだけでなくフォルダー全体を移動してください。
 
 ## Windowsと一緒に起動する場合
 
 画面下部の「自動起動」を利用者が明示的にオンにした時だけ、WindowsのRun登録と待機ヘルパーを設定します。通常のアプリ起動時は登録状態を読み取るだけで、既に正しく登録されている内容を書き直しません。オフ操作も利用者が行った時だけ実行します。
 
-自動起動では `%LOCALAPPDATA%\Y-TEC\StickyNote` に置いた小さな待機ヘルパーを先に起動します。Google Driveのプロセス有無ではなく、アプリ一式と本文・位置の両方の保存データを実際に読み取れ、配置先へ書き込める状態になるまで最大10分待ってから起動します。10分を超えた場合は、その回の起動をエラー表示なしで見送ります。
+自動起動ではKoyomadoと同様に、Google Drive外の `%LOCALAPPDATA%\Y-TEC\StickyNote` に置いた小さな待機プログラムを先に起動します。すでに罫彩が起動していれば二重起動せず終了します。Google Driveのプロセス有無だけでは準備完了とみなさず、アプリ一式と本文・位置の両方の保存データを実際に読み取れ、配置先へ書き込める状態が安定するまで最大10分待ってから起動します。10分を超えた場合は、その回の起動をエラー表示なしで見送ります。
 
 アプリの配置場所を移動した場合は、移動後のアプリで「自動起動」を一度オンにし直してください。職場PCでは管理者やセキュリティ製品の運用ルールを優先してください。明示操作時の登録も環境によっては検知対象になる可能性があります。
 
@@ -49,6 +52,8 @@ USBメモリやGoogle Driveで持ち運ぶ場合は、EXEだけでなくフォ�
 ## 開発
 
 必要環境: Windows、.NET 10 SDK、Rust（待機ヘルパーのビルド用）
+
+操作説明書PDFの再生成にはPythonとReportLab、アイコンの再生成にはPythonとPillowが必要です。通常のアプリビルドとテストには不要です。
 
 ```powershell
 dotnet build src/YtecStickyNote/YtecStickyNote.csproj -c Release
@@ -69,7 +74,7 @@ dotnet run --project src/YtecStickyNote/YtecStickyNote.csproj -c Release -- --te
 powershell -ExecutionPolicy Bypass -File scripts/package.ps1
 ```
 
-`artifacts/Keisai-win-x64/`、`artifacts/Keisai-1.5.2-win-x64.zip`、SHA-256を記載した同名の `.sha256.txt` を生成します。公開ZIPには `output/pdf/罫彩_操作説明書.pdf` も同梱します。既存の配布フォルダーにある `data` は残し、ZIPには個人の保存データを含めません。自己完結型のポータブルフォルダーなので、利用PCへの.NETランタイム導入は不要です。EXEや待機ヘルパーだけを取り出さず、フォルダー全体を一緒に移動してください。
+`artifacts/Keisai-win-x64/`、`artifacts/Keisai-1.5.3-win-x64.zip`、SHA-256を記載した同名の `.sha256.txt` を生成します。公開ZIPには `output/pdf/罫彩_操作説明書.pdf` も同梱します。既存の配布フォルダーにある `data` は残し、ZIPには個人の保存データを含めません。自己完結型のポータブルフォルダーなので、利用PCへの.NETランタイム導入は不要です。EXEや待機ヘルパーだけを取り出さず、フォルダー全体を一緒に移動してください。
 
 旧版の自動起動登録との互換性を維持するため、公開ZIPには `Keisai.exe` と同じアプリを起動する `YTEC-Sticky-Note.exe` も同梱します。新規利用者には `Keisai.exe` を案内します。
 
@@ -77,8 +82,14 @@ powershell -ExecutionPolicy Bypass -File scripts/package.ps1
 
 複数付箋、クラウド同期、認証、暗号化、印刷、PDF出力、画像添付、共有機能は含みません。
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+署名申請、レビュー、承認、プライバシー、GitHub Actionsからの配布手順は [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) に記載しています。SignPath Foundationの採択前または署名サービスを利用できない配布物は、未署名であることとSHA-256を明記します。
+
 ## ライセンスとクレジット
 
-本ソースコードとデザインの著作権はY-TECに帰属します。個人・法人、私的利用・業務利用を問わず無料で利用できます。詳しい条件は [LICENSE.md](LICENSE.md)、データの取り扱いは [docs/PRIVACY.txt](docs/PRIVACY.txt) を確認してください。
+罫彩のソースコードは [Apache License 2.0](LICENSE.txt) で公開します。著作権・帰属表示は [NOTICE](NOTICE)、第三者ソフトウェアは [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、データの取り扱いは [PRIVACY.md](PRIVACY.md) を確認してください。
 
 アプリアイコンは本プロジェクト専用に生成・加工したオリジナルです。外部UIライブラリや外部アセットは使用していません。実行基盤としてMicrosoft .NET / WPFを使用しています。

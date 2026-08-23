@@ -1,0 +1,98 @@
+name: Build release candidate
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-windows:
+    name: Build portable package
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.302
+
+      - name: Verify release source
+        shell: pwsh
+        run: |
+          dotnet build tests/YtecStickyNote.Tests/YtecStickyNote.Tests.csproj -c Release --nologo
+          dotnet run --project tests/YtecStickyNote.Tests/YtecStickyNote.Tests.csproj -c Release --no-build
+          cargo fmt --manifest-path src/YtecStickyNote.Startup/Cargo.toml --check
+          cargo test --manifest-path src/YtecStickyNote.Startup/Cargo.toml --release --locked
+          cargo clippy --manifest-path src/YtecStickyNote.Startup/Cargo.toml --locked --all-targets -- -D warnings
+
+      - name: Confirm tag matches application version
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content src/YtecStickyNote/YtecStickyNote.csproj
+          $version = $project.Project.PropertyGroup.Version
+          if ($env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Tag $env:GITHUB_REF_NAME does not match application version v$version"
+          }
+
+      - name: Build portable ZIP and SHA-256
+        shell: pwsh
+        run: |
+          & ./scripts/package.ps1
+          [xml]$project = Get-Content src/YtecStickyNote/YtecStickyNote.csproj
+          $version = $project.Project.PropertyGroup.Version
+          $archive = "artifacts/Keisai-$version-win-x64.zip"
+          $manual = "output/pdf/罫彩_操作説明書.pdf"
+          $releaseManual = "artifacts/Keisai.pdf"
+          Copy-Item -LiteralPath $manual -Destination $releaseManual
+          $archiveHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+          $manualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $releaseManual).Hash.ToLowerInvariant()
+          @(
+            "$archiveHash  $(Split-Path -Leaf $archive)"
+            "$manualHash  $(Split-Path -Leaf $releaseManual)"
+          ) | Set-Content -Encoding utf8NoBOM -LiteralPath artifacts/SHA256SUMS.txt
+
+      - name: Upload unsigned release artifact
+        id: upload-unsigned
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: keisai-unsigned-${{ github.ref_name }}
+          path: |
+            artifacts/Keisai-win-x64/Keisai.exe
+            artifacts/Keisai-win-x64/YTEC-Sticky-Note-Startup.exe
+            artifacts/Keisai-*-win-x64.zip
+            artifacts/Keisai.pdf
+            artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Create or update draft GitHub Release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [xml]$project = Get-Content src/YtecStickyNote/YtecStickyNote.csproj
+          $version = $project.Project.PropertyGroup.Version
+          $archive = "artifacts/Keisai-$version-win-x64.zip"
+          gh release view $env:GITHUB_REF_NAME *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:GITHUB_REF_NAME --draft --verify-tag --title "罫彩 $version" --generate-notes
+          }
+          gh release upload $env:GITHUB_REF_NAME $archive artifacts/Keisai.pdf artifacts/SHA256SUMS.txt --clobber
+
+# SignPath Foundationで採択後、upload-unsignedのartifact-idを
+# signpath/github-action-submit-signing-requestへ渡す署名ステップを追加します。
+# 採択前のArtifactとdraft Releaseは必ず「未署名」として扱います。

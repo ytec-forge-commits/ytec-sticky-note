@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 const DEFAULT_TIMEOUT_SECONDS: u64 = 600;
 const DEFAULT_POLL_MILLISECONDS: u64 = 2_000;
 const STABILIZATION_MILLISECONDS: u64 = 1_500;
+const SINGLE_INSTANCE_MUTEX_NAME: &str = "Local\\YTEC-Sticky-Note-SingleInstance";
 const REQUIRED_SIBLINGS: &[&str] = &[
     "YTEC-Sticky-Note.dll",
     "YTEC-Sticky-Note.deps.json",
@@ -38,29 +39,39 @@ fn main() {
         return;
     };
 
-    if let Some(target) = wait_for_target(
+    if let Some(target) = wait_for_target_with_running_check(
         &options.config_path,
         options.timeout,
         options.poll_interval,
         Duration::from_millis(STABILIZATION_MILLISECONDS),
-    ) {
+        target_already_running,
+    ) && !target_already_running()
+    {
         let _ = launch_target(&target.executable);
     }
 }
 
-fn wait_for_target(
+fn wait_for_target_with_running_check<F>(
     config_path: &Path,
     timeout: Duration,
     poll_interval: Duration,
     stabilization: Duration,
-) -> Option<StartupTarget> {
+    target_is_running: F,
+) -> Option<StartupTarget>
+where
+    F: Fn() -> bool,
+{
     let started_at = Instant::now();
     while started_at.elapsed() <= timeout {
+        if target_is_running() {
+            return None;
+        }
+
         if let Some(target) = read_target(config_path)
             && required_files_available(&target)
         {
             thread::sleep(stabilization);
-            if required_files_available(&target) {
+            if !target_is_running() && required_files_available(&target) {
                 return Some(target);
             }
         }
@@ -69,6 +80,42 @@ fn wait_for_target(
     }
 
     None
+}
+
+#[cfg(windows)]
+fn target_already_running() -> bool {
+    use std::ffi::c_void;
+    use std::os::windows::ffi::OsStrExt;
+
+    const SYNCHRONIZE: u32 = 0x0010_0000;
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn OpenMutexW(desired_access: u32, inherit_handle: i32, name: *const u16) -> *mut c_void;
+        fn CloseHandle(object: *mut c_void) -> i32;
+    }
+
+    let mutex_name = std::ffi::OsStr::new(SINGLE_INSTANCE_MUTEX_NAME)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+
+    // OpenMutexW only observes the app-owned mutex and does not create or modify it.
+    let handle = unsafe { OpenMutexW(SYNCHRONIZE, 0, mutex_name.as_ptr()) };
+    if handle.is_null() {
+        return false;
+    }
+
+    // The handle was opened only for this readiness check.
+    unsafe {
+        CloseHandle(handle);
+    }
+    true
+}
+
+#[cfg(not(windows))]
+fn target_already_running() -> bool {
+    false
 }
 
 fn parse_options<I>(arguments: I) -> Option<Options>
@@ -270,11 +317,12 @@ mod tests {
             ready_sender.send(()).unwrap();
         });
 
-        let found = wait_for_target(
+        let found = wait_for_target_with_running_check(
             &config,
             Duration::from_secs(1),
             Duration::from_millis(20),
             Duration::from_millis(20),
+            || false,
         );
         ready_receiver.recv().unwrap();
         writer.join().unwrap();
@@ -286,6 +334,25 @@ mod tests {
                 data_files: Vec::new(),
             })
         );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn stops_waiting_when_the_application_is_already_running() {
+        let directory = temporary_directory("already-running");
+        let executable = directory.join("YTEC-Sticky-Note.exe");
+        let config = directory.join("startup-target.txt");
+        fs::write(&config, executable.to_string_lossy().as_bytes()).unwrap();
+
+        let found = wait_for_target_with_running_check(
+            &config,
+            Duration::from_secs(1),
+            Duration::from_millis(20),
+            Duration::from_millis(20),
+            || true,
+        );
+
+        assert_eq!(found, None);
         fs::remove_dir_all(directory).unwrap();
     }
 

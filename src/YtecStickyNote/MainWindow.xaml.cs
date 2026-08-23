@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using YtecStickyNote.Models;
@@ -16,6 +17,10 @@ namespace YtecStickyNote;
 
 public partial class MainWindow : Window
 {
+    private const int WmDisplayChange = 0x007E;
+    private const int WmEnterSizeMove = 0x0231;
+    private const int WmExitSizeMove = 0x0232;
+    private const int WmDpiChanged = 0x02E0;
     private const double NoteLineHeight = 30;
     private static readonly Thickness NotePagePadding = new(64, 10, 22, 24);
     private readonly PortableDataService _dataService = new();
@@ -23,6 +28,8 @@ public partial class MainWindow : Window
     private readonly StartupService _startupService = new();
     private readonly DispatcherTimer _saveTimer;
     private readonly DispatcherTimer _statusTimer;
+    private readonly DispatcherTimer _displayStabilizationTimer;
+    private readonly WindowLayoutSession _windowLayoutSession = new();
     private AppState _state = new();
     private bool _isLoading = true;
     private bool _isClosing;
@@ -36,7 +43,8 @@ public partial class MainWindow : Window
     private bool _isRestoringWindowPlacement;
     private bool _displaySettingsSubscribed;
     private bool _windowPlacementSavingBlocked;
-    private string _windowLayoutId = string.Empty;
+    private bool _isUserMovingOrResizing;
+    private HwndSource? _windowSource;
     private WindowState _windowStateBeforeTray = WindowState.Normal;
 
     public MainWindow()
@@ -57,6 +65,9 @@ public partial class MainWindow : Window
             SaveStatusText.Text = "保存済み";
         };
 
+        _displayStabilizationTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _displayStabilizationTimer.Tick += DisplayStabilizationTimer_Tick;
+
         Editor.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(Editor_ScrollChanged));
     }
 
@@ -66,7 +77,9 @@ public partial class MainWindow : Window
         _state = loaded.State;
         _savingBlocked = !loaded.CanSave;
 
-        var windowProfile = LoadAndApplyWindowProfile(MonitorLayoutService.GetCurrentLayoutId());
+        var initialLayoutId = MonitorLayoutService.GetCurrentLayoutId();
+        var windowProfile = LoadAndApplyWindowProfile(initialLayoutId);
+        _windowLayoutSession.Initialize(initialLayoutId, windowProfile.NeedsSave);
 
         LoadInstalledFonts();
         ApplyTheme(_state.ThemeId);
@@ -94,6 +107,8 @@ public partial class MainWindow : Window
         }
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += SystemEvents_DisplaySettingsChanged;
         _displaySettingsSubscribed = true;
+        _windowSource = PresentationSource.FromVisual(this) as HwndSource;
+        _windowSource?.AddHook(WindowMessageHook);
         _isLoading = false;
 
         if (!string.IsNullOrWhiteSpace(loaded.Warning))
@@ -132,6 +147,10 @@ public partial class MainWindow : Window
 
     private void Window_Closed(object? sender, EventArgs e)
     {
+        _displayStabilizationTimer.Stop();
+        _windowSource?.RemoveHook(WindowMessageHook);
+        _windowSource = null;
+
         if (_displaySettingsSubscribed)
         {
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged;
@@ -146,7 +165,54 @@ public partial class MainWindow : Window
             return;
         }
 
-        Dispatcher.BeginInvoke(() => RefreshWindowLayoutIfChanged(scheduleSave: true));
+        Dispatcher.BeginInvoke(BeginDisplayTransition);
+    }
+
+    private IntPtr WindowMessageHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        switch (message)
+        {
+            case WmEnterSizeMove:
+                _isUserMovingOrResizing = true;
+                break;
+            case WmExitSizeMove:
+                if (_isUserMovingOrResizing)
+                {
+                    _isUserMovingOrResizing = false;
+                    Dispatcher.BeginInvoke(MarkUserPlacementChanged);
+                }
+                break;
+            case WmDisplayChange:
+            case WmDpiChanged when !_isUserMovingOrResizing:
+                Dispatcher.BeginInvoke(BeginDisplayTransition);
+                break;
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private void BeginDisplayTransition()
+    {
+        if (_isClosing || _isLoading)
+        {
+            return;
+        }
+
+        _windowLayoutSession.BeginDisplayTransition();
+        _displayStabilizationTimer.Stop();
+        _displayStabilizationTimer.Start();
+    }
+
+    private void DisplayStabilizationTimer_Tick(object? sender, EventArgs e)
+    {
+        var stableLayoutId = _windowLayoutSession.ObserveDisplayLayout(MonitorLayoutService.GetCurrentLayoutId());
+        if (stableLayoutId is null)
+        {
+            return;
+        }
+
+        _displayStabilizationTimer.Stop();
+        ApplyStableWindowLayout(stableLayoutId, scheduleSave: true);
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)
@@ -182,14 +248,6 @@ public partial class MainWindow : Window
         else if (WindowState is WindowState.Normal or WindowState.Maximized)
         {
             _windowStateBeforeTray = WindowState;
-        }
-    }
-
-    private void Window_BoundsChanged(object? sender, EventArgs e)
-    {
-        if (!_isLoading && !_isRestoringWindowPlacement && WindowState == WindowState.Normal)
-        {
-            ScheduleSave();
         }
     }
 
@@ -238,7 +296,7 @@ public partial class MainWindow : Window
 
     public void RestoreFromTray()
     {
-        RefreshWindowLayoutIfChanged(scheduleSave: true);
+        RestoreCurrentWindowLayout();
         var restoredState = _windowStateBeforeTray == WindowState.Maximized
             ? WindowState.Maximized
             : WindowState.Normal;
@@ -459,6 +517,24 @@ public partial class MainWindow : Window
         }
 
         var enabled = AutoStartCheck.IsChecked == true;
+        if (enabled)
+        {
+            var confirmed = MessageBox.Show(
+                "Windowsサインイン時の自動起動を有効にします。\n\n" +
+                "現在のWindowsユーザーの自動起動設定と、ローカルの待機プログラムを登録します。" +
+                "Google Drive上では、アプリと保存データを読み書きできる状態になるまで最大10分待機します。\n\n" +
+                "登録してよろしいですか？",
+                "罫彩 - 自動起動の確認",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question,
+                MessageBoxResult.No);
+            if (confirmed != MessageBoxResult.Yes)
+            {
+                SetAutoStartCheckState(false);
+                return;
+            }
+        }
+
         try
         {
             _startupService.SetEnabled(enabled);
@@ -698,12 +774,19 @@ public partial class MainWindow : Window
 
         try
         {
-            RefreshWindowLayoutIfChanged(scheduleSave: false);
+            var currentLayoutId = MonitorLayoutService.GetCurrentLayoutId();
+            if (!_windowLayoutSession.IsDisplayTransition &&
+                !string.Equals(currentLayoutId, _windowLayoutSession.LayoutId, StringComparison.Ordinal))
+            {
+                BeginDisplayTransition();
+            }
+
             CaptureState();
             _dataService.Save(_state);
-            if (!_windowPlacementSavingBlocked)
+            if (!_windowPlacementSavingBlocked && _windowLayoutSession.CanSavePlacement(currentLayoutId))
             {
-                _windowProfileService.Save(_windowLayoutId, CaptureWindowPlacement());
+                _windowProfileService.Save(_windowLayoutSession.LayoutId, CaptureWindowPlacement());
+                _windowLayoutSession.MarkPlacementSaved();
             }
             ShowStatus("保存済み");
             return true;
@@ -749,7 +832,6 @@ public partial class MainWindow : Window
     private WindowProfileLoadResult LoadAndApplyWindowProfile(string layoutId)
     {
         var result = _windowProfileService.LoadOrMigrate(layoutId, _state.Window);
-        _windowLayoutId = layoutId;
         _windowPlacementSavingBlocked = !result.CanSave;
         var savedPlacement = result.Placement ?? new WindowStateData();
         var bounds = WindowPlacementService.GetRestoredBounds(savedPlacement);
@@ -782,26 +864,41 @@ public partial class MainWindow : Window
         return result;
     }
 
-    private void RefreshWindowLayoutIfChanged(bool scheduleSave)
+    private void ApplyStableWindowLayout(string layoutId, bool scheduleSave)
     {
         if (_isClosing)
         {
             return;
         }
 
-        var currentLayoutId = MonitorLayoutService.GetCurrentLayoutId();
-        if (string.Equals(currentLayoutId, _windowLayoutId, StringComparison.Ordinal))
-        {
-            return;
-        }
-
         _saveTimer.Stop();
-        var result = LoadAndApplyWindowProfile(currentLayoutId);
+        var result = LoadAndApplyWindowProfile(layoutId);
+        _windowLayoutSession.ApplyStableLayout(layoutId, result.NeedsSave);
         if (!string.IsNullOrWhiteSpace(result.Warning))
         {
             ShowStatus("位置設定エラー", sticky: true);
         }
         else if (scheduleSave && result.NeedsSave)
+        {
+            ScheduleSave();
+        }
+    }
+
+    private void RestoreCurrentWindowLayout()
+    {
+        _displayStabilizationTimer.Stop();
+        ApplyStableWindowLayout(MonitorLayoutService.GetCurrentLayoutId(), scheduleSave: true);
+    }
+
+    private void MarkUserPlacementChanged()
+    {
+        if (_isLoading || _isClosing || _isRestoringWindowPlacement || WindowState != WindowState.Normal)
+        {
+            return;
+        }
+
+        _windowLayoutSession.MarkUserPlacementChanged();
+        if (_windowLayoutSession.PlacementDirty)
         {
             ScheduleSave();
         }
