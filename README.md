@@ -7,6 +7,7 @@ Windowsデスクトップの好きな位置へ置ける、罫線ノート風の�
 - インストール: 不要（ZIPを展開して `Keisai.exe` を起動）
 - 通信機能: なし
 - ソースコード: https://github.com/ytec-commits/ytec-sticky-note
+- 現在の配布版: [1.5.3 ベータ版（未署名）](https://github.com/ytec-commits/ytec-sticky-note/releases/tag/v1.5.3)
 
 ## 主な機能
 
