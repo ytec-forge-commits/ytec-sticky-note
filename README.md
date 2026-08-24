@@ -4,12 +4,12 @@
 
 Windowsデスクトップの好きな位置へ置ける、罫線ノート風のシンプルな付箋アプリです。起動直後から本文を編集でき、装飾・10種類の背景・位置保存を備えます。個人・法人を問わず無料で利用できるWindows専用フリーソフトです。
 
-- 公式配布ページ: https://ytec.cloudfree.jp/ytb/keisai/
+- 公式配布ページ: https://ytec.cloudfree.jp/forge/projects/keisai/
 - 対応環境: Windows 10 / 11（64ビット）
 - インストール: 不要（ZIPを展開して `Keisai.exe` を起動）
 - 通信機能: なし
 - ソースコード: https://github.com/ytec-commits/ytec-sticky-note
-- 現在の配布版: [1.5.3 ベータ版（未署名）](https://github.com/ytec-commits/ytec-sticky-note/releases/tag/v1.5.3)
+- 現在の配布版: [1.5.4 ベータ版（未署名）](https://ytec.cloudfree.jp/forge/projects/keisai/)
 
 ## 主な機能
 
@@ -44,6 +44,8 @@ USBメモリやGoogle Driveで持ち運ぶ場合は、EXEだけでなくフォ�
 
 自動起動ではKoyomadoと同様に、Google Drive外の `%LOCALAPPDATA%\Y-TEC\StickyNote` に置いた小さな待機プログラムを先に起動します。すでに罫彩が起動していれば二重起動せず終了します。Google Driveのプロセス有無だけでは準備完了とみなさず、アプリ一式と本文・位置の両方の保存データを実際に読み取れ、配置先へ書き込める状態が安定するまで最大10分待ってから起動します。10分を超えた場合は、その回の起動をエラー表示なしで見送ります。
 
+1.5.4以降の待機プログラムはMSVC CRTを静的リンクしているため、Visual C++再頒布可能パッケージが未導入のWindowsでも、`%LOCALAPPDATA%`へ単体コピーされた状態で動作します。追加DLLのコピーは不要です。
+
 アプリの配置場所を移動した場合は、移動後のアプリで「自動起動」を一度オンにし直してください。職場PCでは管理者やセキュリティ製品の運用ルールを優先してください。明示操作時の登録も環境によっては検知対象になる可能性があります。
 
 1.5.1以前からGoogle Drive上の自動起動を使っている場合は、1.5.2への更新後に「自動起動」を一度オンにし直してください。通常起動だけで旧登録を自動変更することはありません。
@@ -62,6 +64,7 @@ USBメモリやGoogle Driveで持ち運ぶ場合は、EXEだけでなくフォ�
 dotnet build src/YtecStickyNote/YtecStickyNote.csproj -c Release
 dotnet run --project tests/YtecStickyNote.Tests/YtecStickyNote.Tests.csproj -c Release
 cargo test --manifest-path src/YtecStickyNote.Startup/Cargo.toml --release --locked
+./scripts/check-startup-dependencies.ps1 -ExecutablePath src/YtecStickyNote.Startup/target/release/YTEC-Sticky-Note-Startup.exe
 dotnet run --project tests/YtecStickyNote.VisualTest/YtecStickyNote.VisualTest.csproj -c Release -- 520 620 artifacts/visual-test/520x620.png
 ```
 
@@ -77,7 +80,7 @@ dotnet run --project src/YtecStickyNote/YtecStickyNote.csproj -c Release -- --te
 powershell -ExecutionPolicy Bypass -File scripts/package.ps1
 ```
 
-`artifacts/Keisai-win-x64/`、`artifacts/Keisai-1.5.3-win-x64.zip`、SHA-256を記載した同名の `.sha256.txt` を生成します。公開ZIPには `output/pdf/罫彩_操作説明書.pdf` も同梱します。既存の配布フォルダーにある `data` は残し、ZIPには個人の保存データを含めません。自己完結型のポータブルフォルダーなので、利用PCへの.NETランタイム導入は不要です。EXEや待機ヘルパーだけを取り出さず、フォルダー全体を一緒に移動してください。
+`artifacts/Keisai-win-x64/`、`artifacts/Keisai-1.5.4-win-x64.zip`、SHA-256を記載した同名の `.sha256.txt` を生成します。公開ZIPには `output/pdf/罫彩_操作説明書.pdf` も同梱します。既存の配布フォルダーにある `data` は残し、ZIPには個人の保存データを含めません。罫彩本体は自己完結型で、待機ヘルパーはMSVC CRTを静的リンクしているため、利用PCへの.NETランタイムやVisual C++再頒布可能パッケージの追加導入は不要です。アプリを持ち運ぶ場合は、EXEだけを取り出さずフォルダー全体を一緒に移動してください。
 
 旧版の自動起動登録との互換性を維持するため、公開ZIPには `Keisai.exe` と同じアプリを起動する `YTEC-Sticky-Note.exe` も同梱します。新規利用者には `Keisai.exe` を案内します。
 

@@ -26,6 +26,7 @@ struct Options {
     config_path: PathBuf,
     timeout: Duration,
     poll_interval: Duration,
+    target_arguments: Vec<OsString>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -47,7 +48,7 @@ fn main() {
         target_already_running,
     ) && !target_already_running()
     {
-        let _ = launch_target(&target.executable);
+        let _ = launch_target(&target.executable, &options.target_arguments);
     }
 }
 
@@ -126,6 +127,7 @@ where
     let mut config_path = None;
     let mut timeout_seconds = DEFAULT_TIMEOUT_SECONDS;
     let mut poll_milliseconds = DEFAULT_POLL_MILLISECONDS;
+    let mut target_arguments = Vec::new();
 
     while let Some(argument) = arguments.next() {
         match argument.to_string_lossy().as_ref() {
@@ -136,6 +138,7 @@ where
             "--poll-milliseconds" => {
                 poll_milliseconds = arguments.next()?.to_string_lossy().parse().ok()?;
             }
+            "--target-argument" => target_arguments.push(arguments.next()?),
             _ => return None,
         }
     }
@@ -144,6 +147,7 @@ where
         config_path: config_path?,
         timeout: Duration::from_secs(timeout_seconds),
         poll_interval: Duration::from_millis(poll_milliseconds.max(50)),
+        target_arguments,
     })
 }
 
@@ -215,12 +219,16 @@ fn directory_is_writable(directory: &Path) -> bool {
     result.is_ok()
 }
 
-fn launch_target(target: &Path) -> bool {
+fn launch_target(target: &Path, arguments: &[OsString]) -> bool {
     let Some(directory) = target.parent() else {
         return false;
     };
 
-    Command::new(target).current_dir(directory).spawn().is_ok()
+    Command::new(target)
+        .args(arguments)
+        .current_dir(directory)
+        .spawn()
+        .is_ok()
 }
 
 #[cfg(test)]
@@ -354,6 +362,27 @@ mod tests {
 
         assert_eq!(found, None);
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn parses_repeatable_target_arguments_for_integration_testing() {
+        let options = parse_options([
+            OsString::from("--config"),
+            OsString::from("startup-target.txt"),
+            OsString::from("--target-argument"),
+            OsString::from("--test-mode"),
+            OsString::from("--target-argument"),
+            OsString::from("value with spaces"),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            options.target_arguments,
+            vec![
+                OsString::from("--test-mode"),
+                OsString::from("value with spaces")
+            ]
+        );
     }
 
     fn temporary_directory(label: &str) -> PathBuf {

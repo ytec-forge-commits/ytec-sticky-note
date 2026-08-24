@@ -1,6 +1,6 @@
 [package]
 name = "ytec-sticky-note-startup"
-version = "1.5.3"
+version = "1.5.4"
 edition = "2024"
 publish = false
 build = "build.rs"
@@ -11,11 +11,11 @@ repository = "https://github.com/ytec-commits/ytec-sticky-note"
 [package.metadata.winresource]
 CompanyName = "Y-TEC"
 FileDescription = "罫彩 Windows起動待機プログラム"
-FileVersion = "1.5.3.0"
+FileVersion = "1.5.4.0"
 LegalCopyright = "Copyright © Y-TEC 2026"
 OriginalFilename = "YTEC-Sticky-Note-Startup.exe"
 ProductName = "罫彩"
-ProductVersion = "1.5.3"
+ProductVersion = "1.5.4"
 
 [build-dependencies]
 winresource = { version = "0.1.31", default-features = false }

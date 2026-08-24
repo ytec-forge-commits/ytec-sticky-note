@@ -41,6 +41,12 @@ jobs:
       - name: Test Rust startup helper
         run: cargo test --manifest-path src/YtecStickyNote.Startup/Cargo.toml --release --locked
 
+      - name: Verify standalone startup helper dependencies
+        shell: pwsh
+        run: |
+          cargo build --manifest-path src/YtecStickyNote.Startup/Cargo.toml --release --locked
+          & ./scripts/check-startup-dependencies.ps1 -ExecutablePath src/YtecStickyNote.Startup/target/release/YTEC-Sticky-Note-Startup.exe
+
       - name: Lint Rust startup helper
         run: cargo clippy --manifest-path src/YtecStickyNote.Startup/Cargo.toml --locked --all-targets -- -D warnings
 

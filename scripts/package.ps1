@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $productName = 'Keisai'
-$productVersion = '1.5.3'
+$productVersion = '1.5.4'
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $artifactRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts'))
 $publishDirectory = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot "$productName-$Runtime"))
@@ -60,10 +60,18 @@ if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE."
 }
 
-& $cargoExe build --manifest-path $startupManifest --release --locked
-if ($LASTEXITCODE -ne 0) {
-    throw "cargo build failed with exit code $LASTEXITCODE."
+Push-Location -LiteralPath $projectRoot
+try {
+    & $cargoExe build --manifest-path $startupManifest --release --locked
+    $cargoExitCode = $LASTEXITCODE
+} finally {
+    Pop-Location
 }
+if ($cargoExitCode -ne 0) {
+    throw "cargo build failed with exit code $cargoExitCode."
+}
+
+& (Join-Path $PSScriptRoot 'check-startup-dependencies.ps1') -ExecutablePath $startupExecutable
 
 Copy-Item -LiteralPath $startupExecutable -Destination (Join-Path $stagingDirectory 'YTEC-Sticky-Note-Startup.exe')
 Copy-Item -LiteralPath (Join-Path $stagingDirectory 'YTEC-Sticky-Note.exe') -Destination (Join-Path $stagingDirectory 'Keisai.exe')

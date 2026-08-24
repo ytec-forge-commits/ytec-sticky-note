@@ -64,6 +64,10 @@ jobs:
             "$manualHash  $(Split-Path -Leaf $releaseManual)"
           ) | Set-Content -Encoding utf8NoBOM -LiteralPath artifacts/SHA256SUMS.txt
 
+      - name: Verify packaged startup behavior
+        shell: pwsh
+        run: ./scripts/test-startup-helper.ps1
+
       - name: Upload unsigned release artifact
         id: upload-unsigned
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

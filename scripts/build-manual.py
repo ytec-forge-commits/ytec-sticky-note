@@ -404,7 +404,7 @@ def draw_page(canvas, doc) -> None:
     canvas.drawString(20 * mm, 11 * mm, "罫彩 操作説明書")
     canvas.setFont("YuGothic", 7.5)
     canvas.setFillColor(MUTED)
-    canvas.drawRightString(width - 20 * mm, 11 * mm, f"1.5.3  |  {page}")
+    canvas.drawRightString(width - 20 * mm, 11 * mm, f"1.5.4  |  {page}")
     canvas.setStrokeColor(LINE)
     canvas.setLineWidth(0.4)
     canvas.line(20 * mm, 16 * mm, width - 20 * mm, 16 * mm)
@@ -456,7 +456,7 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
         )
     )
     story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph("対応環境: Windows 10 / 11（64-bit）　　発行: 2026年8月23日", styles["small"]))
+    story.append(Paragraph("対応環境: Windows 10 / 11（64-bit）　　発行: 2026年8月25日", styles["small"]))
     story.append(PageBreak())
 
     # 2. Screen overview
@@ -737,7 +737,7 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
         )
     )
     story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph("罫彩 1.5.3　操作説明書", styles["cover_kicker"]))
+    story.append(Paragraph("罫彩 1.5.4　操作説明書", styles["cover_kicker"]))
 
     return story
 
@@ -760,7 +760,7 @@ def main() -> None:
         bottomMargin=21 * mm,
         title="罫彩 操作説明書",
         author="Y-TEC",
-        subject="Windows専用フリーソフト 罫彩 1.5.3 の操作説明書",
+        subject="Windows専用フリーソフト 罫彩 1.5.4 の操作説明書",
         creator="Y-TEC",
     )
     frame = Frame(

@@ -4,12 +4,12 @@
 
 Keisai is a simple, ruled-notebook-style sticky note for Windows. It opens directly into an editable note and provides rich-text formatting, ten paper backgrounds, and monitor-configuration-aware window placement. It is a free Windows application for both personal and commercial use.
 
-- Official download page (Japanese): https://ytec.cloudfree.jp/ytb/keisai/
+- Official download page: https://ytec.cloudfree.jp/forge/en/projects/keisai/
 - Supported systems: Windows 10 and Windows 11, 64-bit
 - Installation: None; extract the ZIP and run `Keisai.exe`
 - Network communication: None
 - Source code: https://github.com/ytec-commits/ytec-sticky-note
-- Current release: [1.5.3 Beta (unsigned)](https://github.com/ytec-commits/ytec-sticky-note/releases/tag/v1.5.3)
+- Current release: [1.5.4 Beta (unsigned)](https://ytec.cloudfree.jp/forge/en/projects/keisai/)
 
 ## Features
 
@@ -51,6 +51,8 @@ For portable installations on Google Drive, Keisai follows the same local-waiter
 
 The helper waits for the application files and both note and placement data to become readable, and for the destination folder to become writable and stable. It then starts Keisai. The wait is limited to ten minutes; if readiness is not reached, that startup attempt is silently skipped.
 
+Starting with version 1.5.4, the helper statically links the MSVC CRT. It can therefore run by itself under `%LOCALAPPDATA%` on Windows systems without the Visual C++ Redistributable, and no companion runtime DLL needs to be copied.
+
 If the application folder is moved, enable **Start with Windows** again from the new location. On managed workplace PCs, follow the administrator's and security product's policies. Even this explicit registration may be detected by some endpoint-security configurations.
 
 ## Development
@@ -67,6 +69,7 @@ Python with ReportLab is required only to regenerate the PDF manual, and Python 
 dotnet build src/YtecStickyNote/YtecStickyNote.csproj -c Release
 dotnet run --project tests/YtecStickyNote.Tests/YtecStickyNote.Tests.csproj -c Release
 cargo test --manifest-path src/YtecStickyNote.Startup/Cargo.toml --release --locked
+./scripts/check-startup-dependencies.ps1 -ExecutablePath src/YtecStickyNote.Startup/target/release/YTEC-Sticky-Note-Startup.exe
 dotnet run --project tests/YtecStickyNote.VisualTest/YtecStickyNote.VisualTest.csproj -c Release -- 520 620 artifacts/visual-test/520x620.png
 ```
 
@@ -82,9 +85,9 @@ dotnet run --project src/YtecStickyNote/YtecStickyNote.csproj -c Release -- --te
 powershell -ExecutionPolicy Bypass -File scripts/package.ps1
 ```
 
-The packaging script creates `artifacts/Keisai-win-x64/`, `artifacts/Keisai-1.5.3-win-x64.zip`, and a matching `.sha256.txt` file. The public ZIP also includes `output/pdf/罫彩_操作説明書.pdf`. Existing user data under a distribution folder is preserved, and the ZIP never includes personal data from `data`.
+The packaging script creates `artifacts/Keisai-win-x64/`, `artifacts/Keisai-1.5.4-win-x64.zip`, and a matching `.sha256.txt` file. The public ZIP also includes `output/pdf/罫彩_操作説明書.pdf`. Existing user data under a distribution folder is preserved, and the ZIP never includes personal data from `data`.
 
-The package is self-contained, so the destination PC does not require a separate .NET runtime installation. Keep the executable, startup helper, and all runtime files together. For compatibility with older startup registrations, the ZIP also contains `YTEC-Sticky-Note.exe`, which launches the same application; new users should run `Keisai.exe`.
+The application package is self-contained, and the startup helper statically links the MSVC CRT, so the destination PC does not require a separate .NET runtime or Visual C++ Redistributable installation. Keep the application folder together when carrying Keisai. For compatibility with older startup registrations, the ZIP also contains `YTEC-Sticky-Note.exe`, which launches the same application; new users should run `Keisai.exe`.
 
 ## Out of scope
 
