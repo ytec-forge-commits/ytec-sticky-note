@@ -732,7 +732,7 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
     story.append(
         note_box(
             "配布・更新情報",
-            "最新版、ダウンロード、SHA-256は公式ページで確認できます。<br/><link href='https://ytec.cloudfree.jp/ytb/keisai/' color='#155B8D'>https://ytec.cloudfree.jp/ytb/keisai/</link>",
+            "最新版、ダウンロード、SHA-256は公式ページで確認できます。<br/><link href='https://ytec.cloudfree.jp/forge/projects/keisai/' color='#155B8D'>https://ytec.cloudfree.jp/forge/projects/keisai/</link>",
             styles,
         )
     )
