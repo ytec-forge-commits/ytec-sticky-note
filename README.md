@@ -8,7 +8,7 @@ Windowsデスクトップの好きな位置へ置ける、罫線ノート風の�
 - 対応環境: Windows 10 / 11（64ビット）
 - インストール: 不要（ZIPを展開して `Keisai.exe` を起動）
 - 通信機能: なし
-- ソースコード: https://github.com/ytec-commits/ytec-sticky-note
+- ソースコード: https://github.com/ytec-forge-commits/ytec-sticky-note
 - 現在の配布版: [1.5.4 ベータ版（未署名）](https://ytec.cloudfree.jp/forge/projects/keisai/)
 
 ## 主な機能

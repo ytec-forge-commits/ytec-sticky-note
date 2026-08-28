@@ -8,7 +8,7 @@ Keisai is a simple, ruled-notebook-style sticky note for Windows. It opens direc
 - Supported systems: Windows 10 and Windows 11, 64-bit
 - Installation: None; extract the ZIP and run `Keisai.exe`
 - Network communication: None
-- Source code: https://github.com/ytec-commits/ytec-sticky-note
+- Source code: https://github.com/ytec-forge-commits/ytec-sticky-note
 - Current release: [1.5.4 Beta (unsigned)](https://ytec.cloudfree.jp/forge/en/projects/keisai/)
 
 ## Features

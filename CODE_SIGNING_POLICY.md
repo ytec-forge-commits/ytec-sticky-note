@@ -6,10 +6,10 @@ Free code signing provided by [SignPath.io](https://about.signpath.io/), certifi
 
 ## Team roles
 
-- Committers and reviewers: [ytec-commits organization members](https://github.com/orgs/ytec-commits/people)
-- Approvers: [ytec-commits organization owners](https://github.com/orgs/ytec-commits/people?query=role%3Aowner)
+- Committers and reviewers: [ytec-forge-commits organization members](https://github.com/orgs/ytec-forge-commits/people)
+- Approvers: [ytec-forge-commits organization owners](https://github.com/orgs/ytec-forge-commits/people?query=role%3Aowner)
 
-外部からのPull Requestは、リポジトリ管理者が内容とCI結果を確認してから取り込みます。各署名リクエストは、ytec-commits organization ownerが配布内容と検証結果を確認して承認します。
+外部からのPull Requestは、リポジトリ管理者が内容とCI結果を確認してから取り込みます。各署名リクエストは、ytec-forge-commits organization ownerが配布内容と検証結果を確認して承認します。
 
 ## Privacy
 

@@ -6,7 +6,7 @@ publish = false
 build = "build.rs"
 license = "Apache-2.0"
 description = "罫彩をWindowsサインイン時に安全に待機起動する補助プログラム"
-repository = "https://github.com/ytec-commits/ytec-sticky-note"
+repository = "https://github.com/ytec-forge-commits/ytec-sticky-note"
 
 [package.metadata.winresource]
 CompanyName = "Y-TEC"
