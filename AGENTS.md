@@ -30,7 +30,7 @@
 ## OSSと配布
 
 - ソースコードはApache License 2.0で公開し、配布ZIPへ `LICENSE.txt`、`NOTICE.txt`、`THIRD_PARTY_NOTICES.txt` を含める。
-- Microsoft Store版はPartner CenterのIdentity/Publisherを推測せず、審査後のMicrosoft署名を利用する。直接配布版はSignPath Foundation採択までY-TEC自己署名とSHA-256を使用し、自己署名・未署名・SignPath署名を同じ表現で公開しない。
+- Microsoft Store版はPartner CenterのIdentity/Publisherを推測せず、審査後のMicrosoft署名を利用する。直接配布版はY-TEC自己署名とSHA-256を使用する。SignPath Foundation申請は不採択のため現在の配布経路に含めず、自己署名・未署名・第三者署名を同じ表現で公開しない。
 - 公開工程は `build → test → package → sign → verify → final bundle → hash → publish` の順を守り、署名・hash後の成果物を書き換えない。
 
 ## コマンド

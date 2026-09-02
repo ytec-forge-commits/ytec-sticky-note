@@ -115,7 +115,7 @@ Keisai intentionally does not include multiple notes, cloud synchronization, aut
 
 ## Code signing policy
 
-Microsoft signs the Store package after certification. Until the SignPath Foundation application is resolved, direct Forge and GitHub downloads use a Y-TEC self-signed signature plus SHA-256. See [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) for the limitations of self-signing, private-key protection, and future provider migration.
+Microsoft signs the Store package after certification. Direct Forge and GitHub downloads use a Y-TEC self-signed signature plus SHA-256. The SignPath Foundation application was not accepted, so the current distribution paths are the Microsoft Store and the self-signed direct build. See [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) for the limitations of self-signing, private-key protection, and future provider migration.
 
 ## License and credits
 

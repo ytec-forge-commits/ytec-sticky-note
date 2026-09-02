@@ -12,7 +12,7 @@
 
 ## Forge／GitHub直接配布版
 
-SignPath Foundationの審査結果が出るまで、直接配布するポータブル版はY-TECの自己署名を使用します。
+SignPath Foundation申請は不採択となったため、直接配布するポータブル版はY-TECの自己署名を使用します。
 
 - 秘密鍵は現在のWindowsユーザーの証明書ストアで非exportableとして生成・保持します。
 - `.pfx`、`.p12`、秘密鍵、パスワードをWorkspace、Git、CI Artifact、ZIP、Forge、GitHub Releaseへ保存しません。
@@ -36,6 +36,6 @@ GitHub Actionsは秘密鍵を持たないため、ソース検証と未署名can
 
 ## SignPath Foundation
 
-SignPath Foundationの採択後は、公開ソース、CI Artifact、承認者による署名経路へ移行できます。移行時は自己署名版とSignPath署名版を混同せず、署名プロバイダ、検証結果、配布物の対応をRelease notesへ明記します。
+申請は不採択となり、現在の配布経路には使用していません。将来、要件を満たして再申請し採択された場合だけ、公開ソース、CI Artifact、承認者による署名経路への移行を改めて検討します。移行時は自己署名版と第三者署名版を混同せず、署名プロバイダ、検証結果、配布物の対応をRelease notesへ明記します。
 
 Free code signing application: [SignPath.io](https://about.signpath.io/) / [SignPath Foundation](https://signpath.org/)

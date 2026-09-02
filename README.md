@@ -109,7 +109,7 @@ powershell -ExecutionPolicy Bypass -File scripts/package-msix.ps1 `
 
 ## Code signing policy
 
-Microsoft Store版は審査通過後にMicrosoft Storeが署名します。Forge／GitHubの直接配布版は、SignPath Foundationの審査結果が出るまでY-TECの自己署名とSHA-256を使用します。自己署名版の制約、秘密鍵を配布しない工程、将来の署名プロバイダ切替は [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) に記載しています。
+Microsoft Store版は審査通過後にMicrosoft Storeが署名します。Forge／GitHubの直接配布版は、Y-TECの自己署名とSHA-256を使用します。SignPath Foundation申請は不採択となったため、現在はStore版と自己署名版の2経路です。自己署名版の制約、秘密鍵を配布しない工程、将来の署名プロバイダ切替は [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) に記載しています。
 
 ## ライセンスとクレジット
 
