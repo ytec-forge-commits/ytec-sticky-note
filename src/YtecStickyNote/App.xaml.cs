@@ -16,9 +16,31 @@ public partial class App : WpfApplication
     private Forms.ContextMenuStrip? _trayMenu;
     private Icon? _trayDrawingIcon;
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        DispatcherUnhandledException += (_, args) =>
+        {
+            MessageBox.Show(
+                $"予期しないエラーが発生しました。\n\n{args.Exception.Message}",
+                "罫彩",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            args.Handled = true;
+        };
+
+        if (AppRuntimeOptions.ShouldWaitForStartupData)
+        {
+            var ready = await Services.StartupDataAvailability.WaitUntilReadyAsync(
+                AppRuntimeOptions.StartupDataRoot!,
+                AppRuntimeOptions.StartupWaitTimeout);
+            if (!ready)
+            {
+                Shutdown();
+                return;
+            }
+        }
 
         var mutexName = AppRuntimeOptions.IsTestMode
             ? $"Local\\YTEC-Sticky-Note-TestMode-{Environment.ProcessId}"
@@ -35,16 +57,6 @@ public partial class App : WpfApplication
             Shutdown();
             return;
         }
-
-        DispatcherUnhandledException += (_, args) =>
-        {
-            MessageBox.Show(
-                $"予期しないエラーが発生しました。\n\n{args.Exception.Message}",
-                "罫彩",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-            args.Handled = true;
-        };
 
         _mainWindow = new MainWindow();
         MainWindow = _mainWindow;

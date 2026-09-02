@@ -1,26 +1,41 @@
 # Code signing policy
 
-罫彩のWindows配布物は、GitHub上の公開ソースとビルド手順からGitHub ActionsのGitHub-hosted Windows runnerで生成します。
+罫彩は、Microsoft Storeと直接ダウンロードで署名経路を分けます。どちらも同じ基準versionのソースから作成し、配布物へ利用者データや秘密鍵を含めません。
 
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+## Microsoft Store版
 
-## Team roles
+- Store用MSIXは、Partner Centerで取得したPackage Identity NameとPublisherをそのままmanifestへ使用します。値を推測しません。
+- Store提出用MSIXへY-TECの直接配布用自己署名を流用しません。
+- 審査通過後の公開パッケージはMicrosoft Storeが署名し、Storeの更新機構を利用します。
+- 保存先はWindowsのパッケージLocalStateです。読み取り専用のインストール領域へ保存しません。
+- 自動起動はmanifestで宣言したWindows StartupTaskを使用し、ポータブル版のRun登録やローカルキャッシュは使用しません。
 
-- Committers and reviewers: [ytec-forge-commits organization members](https://github.com/orgs/ytec-forge-commits/people)
-- Approvers: [ytec-forge-commits organization owners](https://github.com/orgs/ytec-forge-commits/people?query=role%3Aowner)
+## Forge／GitHub直接配布版
 
-外部からのPull Requestは、リポジトリ管理者が内容とCI結果を確認してから取り込みます。各署名リクエストは、ytec-forge-commits organization ownerが配布内容と検証結果を確認して承認します。
+SignPath Foundationの審査結果が出るまで、直接配布するポータブル版はY-TECの自己署名を使用します。
 
-## Privacy
+- 秘密鍵は現在のWindowsユーザーの証明書ストアで非exportableとして生成・保持します。
+- `.pfx`、`.p12`、秘密鍵、パスワードをWorkspace、Git、CI Artifact、ZIP、Forge、GitHub Releaseへ保存しません。
+- 署名対象は、公開ZIPへ入るY-TEC製の最終EXE／DLLだけです。Microsoftや.NETの第三者バイナリを再署名しません。
+- SHA-256とRFC 3161タイムスタンプを使用し、署名者、改ざん有無、タイムスタンプを検証してからZIP化します。
+- 公開するCERは公開鍵だけを含む検証補助物です。罫彩は利用者のTrusted RootやTrusted Peopleへ証明書を自動登録しません。
+- 自己署名は一般の認証局による身元証明ではなく、WindowsやSmartScreenの警告を回避・保証するものではありません。この制約をForgeとGitHub Releaseへ明記します。
+- 最終ZIP、操作説明書、公開CERごとにSHA-256を生成し、`SHA256SUMS.txt` として同時公開します。
 
-罫彩はネットワーク通信を行いません。入力内容と設定は実行ファイル横の `data` フォルダーへ暗号化せず保存します。詳しくは[プライバシーポリシー](PRIVACY.md)を確認してください。
+## リリース工程
 
-## Release process
+1. ソースをビルドし、.NET／UI／回帰テストを実行します。
+2. 利用者データを含まない署名前のポータブルZIPとStore用MSIXを作成し、内容を検証します。
+3. 直接配布版だけを隔離したstagingへ展開し、Y-TEC製EXE／DLLへ自己署名とタイムスタンプを付与します。
+4. 全署名を検証してから最終ZIPを作成します。
+5. 最終ZIP、操作説明書、公開CERのSHA-256を生成します。hash生成後に成果物を書き換えません。
+6. frozen candidateの最終確認後、同じ成果物をForgeとGitHub Releaseへ公開します。
+7. Store版はPartner Centerへ提出し、Microsoftの認定・署名・公開工程を利用します。
 
-1. `main` ブランチのCIで.NETビルド、アプリテスト、Rust formatting、Rustテスト、Clippyを実行します。
-2. バージョンタグからGitHub-hosted Windows runner上で署名前の実行ファイルとポータブルZIPを再ビルドし、ワークフローArtifactへ保存します。
-3. SignPathのGitHub連携が利用可能な場合は、そのArtifactをSignPathへ提出します。
-4. 署名済み実行ファイル、操作説明書、ライセンス、更新履歴をポータブルZIPへまとめます。
-5. SHA-256を生成し、GitHub Releaseと公式紹介ページへ掲載します。
+GitHub Actionsは秘密鍵を持たないため、ソース検証と未署名candidateの作成までを担当します。自己署名版は管理されたローカルRelease工程で作成します。
 
-SignPath Foundationの採択前または署名サービスを利用できない場合、Releaseは未署名であることを明記し、SHA-256を掲載します。署名済みと未署名の配布物を同じ表現で公開しません。
+## SignPath Foundation
+
+SignPath Foundationの採択後は、公開ソース、CI Artifact、承認者による署名経路へ移行できます。移行時は自己署名版とSignPath署名版を混同せず、署名プロバイダ、検証結果、配布物の対応をRelease notesへ明記します。
+
+Free code signing application: [SignPath.io](https://about.signpath.io/) / [SignPath Foundation](https://signpath.org/)

@@ -35,21 +35,6 @@ jobs:
           dotnet build tests/YtecStickyNote.Tests/YtecStickyNote.Tests.csproj -c Release --nologo
           dotnet run --project tests/YtecStickyNote.Tests/YtecStickyNote.Tests.csproj -c Release --no-build
 
-      - name: Verify Rust formatting
-        run: cargo fmt --manifest-path src/YtecStickyNote.Startup/Cargo.toml --check
-
-      - name: Test Rust startup helper
-        run: cargo test --manifest-path src/YtecStickyNote.Startup/Cargo.toml --release --locked
-
-      - name: Verify standalone startup helper dependencies
-        shell: pwsh
-        run: |
-          cargo build --manifest-path src/YtecStickyNote.Startup/Cargo.toml --release --locked
-          & ./scripts/check-startup-dependencies.ps1 -ExecutablePath src/YtecStickyNote.Startup/target/release/YTEC-Sticky-Note-Startup.exe
-
-      - name: Lint Rust startup helper
-        run: cargo clippy --manifest-path src/YtecStickyNote.Startup/Cargo.toml --locked --all-targets -- -D warnings
-
       - name: Build application
         run: dotnet build src/YtecStickyNote/YtecStickyNote.csproj -c Release --nologo
 
@@ -57,6 +42,6 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: keisai-windows-${{ github.sha }}
-          path: src/YtecStickyNote/bin/Release/net10.0-windows/win-x64/YTEC-Sticky-Note.exe
+          path: src/YtecStickyNote/bin/Release/net10.0-windows10.0.17763.0/win-x64/YTEC-Sticky-Note.exe
           if-no-files-found: error
           retention-days: 7

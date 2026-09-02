@@ -6,14 +6,17 @@ Keisai is a simple, ruled-notebook-style sticky note for Windows. It opens direc
 
 - Official download page: https://ytec.cloudfree.jp/forge/en/projects/keisai/
 - Supported systems: Windows 10 and Windows 11, 64-bit
-- Installation: None; extract the ZIP and run `Keisai.exe`
+- Distribution: Microsoft Store package (published after certification) and portable ZIP
+- Portable installation: None; extract the ZIP and run `Keisai.exe`
 - Network communication: None
 - Source code: https://github.com/ytec-forge-commits/ytec-sticky-note
-- Current release: [1.5.4 Beta (unsigned)](https://ytec.cloudfree.jp/forge/en/projects/keisai/)
+- Current release: [1.6.0 Preview (self-signed)](https://ytec.cloudfree.jp/forge/en/projects/keisai/)
 
 ## Features
 
 - Bold, italic, underline, strikethrough, center alignment, and bulleted lists
+- Multiple pages in one window, with independent content, rich formatting, and background per page
+- Undo/redo, current-page search, clear character formatting, and paste as plain text
 - Every font installed on the PC, with frequently used fonts starred and listed first
 - Five font sizes and ten text colors
 - Ten backgrounds: Lemon, Sakura, Mint, Sky, Ivory, Lavender, Peach, Aqua, Gray, and Mocha
@@ -33,7 +36,9 @@ At startup, Keisai displays the note at its saved position and places its icon i
 
 ## Portable data and window placement
 
-The note, rich-text formatting, and selected background are stored in `data/sticky-note.json` beside the executable. The JSON file is not encrypted. Formatted content is stored as a Base64-encoded XAML package, with RTF compatibility data and searchable plain text. Keisai can still load older RTF-only data and falls back to RTF if the newer format cannot be read.
+The portable build stores all pages, rich-text formatting, and page-specific backgrounds in `data/sticky-note.json` beside the executable. The Microsoft Store build uses the app-specific Windows LocalState directory instead of the read-only package installation directory. Both channels use the same data format, but their storage locations remain separate and are not copied automatically.
+
+The JSON file is not encrypted. Every page stores a Base64-encoded XAML package, RTF compatibility data, and searchable plain text. Single-page data created by version 1.5.4 or earlier is migrated into the first page without losing its formatting or background.
 
 Updates are written through a temporary file, and the previous save is preserved as `.bak` before replacement. The first migration from the version 1 format also creates `sticky-note.json.v1.bak`, which is not overwritten by later saves.
 
@@ -45,15 +50,23 @@ When carrying Keisai on a USB drive or Google Drive, move the entire application
 
 ## Starting with Windows
 
-Keisai changes Windows startup settings only when the user explicitly enables **Start with Windows** in the application. Normal application startup only reads the existing registration and does not rewrite it. Disabling the option is also performed only in response to an explicit user action.
+The Microsoft Store build uses the Windows package StartupTask. For the portable build, Keisai verifies a Y-TEC-signed runtime manifest and the SHA-256 of every EXE, DLL, runtime JSON, and DAT file before copying the self-contained application to `%LOCALAPPDATA%\Y-TEC\StickyNote\app`. It then registers that local Keisai executable directly with Windows Run. The former `YTEC-Sticky-Note-Startup.exe`, which triggered an antivirus heuristic, is not included in the 1.6.0 distribution.
 
-For portable installations on Google Drive, Keisai follows the same local-waiter design as Koyomado. A small helper under `%LOCALAPPDATA%\Y-TEC\StickyNote` starts before the application. It exits without launching a duplicate if Keisai is already running, and it does not treat the presence of a Google Drive process as proof that the drive is ready.
+For safety, a saved state file is limited to 64 MiB and 1,000 pages. If oversized or damaged data is detected, Keisai leaves the original file untouched and disables editing and saving while it displays a warning.
 
-The helper waits for the application files and both note and placement data to become readable, and for the destination folder to become writable and stable. It then starts Keisai. The wait is limited to ten minutes; if readiness is not reached, that startup attempt is silently skipped.
+Keisai changes Windows startup settings only when the user explicitly enables **Start with Windows**. At that point it verifies the application signature and SHA-256 values before creating the local cache and Run entry. Normal startup does not rewrite a correct registration. Disabling the option is also performed only after an explicit user action.
 
-Starting with version 1.5.4, the helper statically links the MSVC CRT. It can therefore run by itself under `%LOCALAPPDATA%` on Windows systems without the Visual C++ Redistributable, and no companion runtime DLL needs to be copied.
+At Windows sign-in, Keisai runs only the verified local copy; it does not execute application code from Google Drive. The canonical note and placement files remain in the original portable `data` directory on Google Drive.
+
+Keisai does not treat the presence of a Google Drive process as proof that the drive is ready. It waits until the original storage directory and any existing note and placement files are readable and writable for three continuous seconds. The wait is limited to ten minutes; if readiness is not reached, that startup attempt is silently skipped.
+
+After installing a legitimate update, turn **Start with Windows** off and on once from the new version to refresh the signed local cache. The portable data location and format do not change.
 
 If the application folder is moved, enable **Start with Windows** again from the new location. On managed workplace PCs, follow the administrator's and security product's policies. Even this explicit registration may be detected by some endpoint-security configurations.
+
+When version 1.6.0 detects the retired helper-based registration, it asks whether to replace it with the local Keisai executable or remove it. Windows Run settings are changed only after the user answers that migration prompt.
+
+For the safest update from an older version, turn off **Start with Windows** in the old version before replacing the application folder, then start version 1.6.0 manually and enable it again. If the files were already replaced, manually start a verified copy of version 1.6.0 and finish the migration prompt before the next Windows restart.
 
 ## Development
 
@@ -61,15 +74,12 @@ Requirements:
 
 - Windows
 - .NET 10 SDK
-- Rust toolchain for the startup helper
 
 Python with ReportLab is required only to regenerate the PDF manual, and Python with Pillow is required only to regenerate the icon. They are not required for a normal application build or test run.
 
 ```powershell
 dotnet build src/YtecStickyNote/YtecStickyNote.csproj -c Release
 dotnet run --project tests/YtecStickyNote.Tests/YtecStickyNote.Tests.csproj -c Release
-cargo test --manifest-path src/YtecStickyNote.Startup/Cargo.toml --release --locked
-./scripts/check-startup-dependencies.ps1 -ExecutablePath src/YtecStickyNote.Startup/target/release/YTEC-Sticky-Note-Startup.exe
 dotnet run --project tests/YtecStickyNote.VisualTest/YtecStickyNote.VisualTest.csproj -c Release -- 520 620 artifacts/visual-test/520x620.png
 ```
 
@@ -83,11 +93,21 @@ dotnet run --project src/YtecStickyNote/YtecStickyNote.csproj -c Release -- --te
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/package.ps1
+powershell -ExecutionPolicy Bypass -File scripts/package-self-signed-direct.ps1
 ```
 
-The packaging script creates `artifacts/Keisai-win-x64/`, `artifacts/Keisai-1.5.4-win-x64.zip`, and a matching `.sha256.txt` file. The public ZIP also includes `output/pdf/罫彩_操作説明書.pdf`. Existing user data under a distribution folder is preserved, and the ZIP never includes personal data from `data`.
+The first command creates an unsigned development candidate. The second creates the self-signed portable ZIP published on Forge and GitHub, a public-only CER, the Japanese manual, and `SHA256SUMS.txt`. Personal `data` is never included. A self-signed signature helps detect tampering but is not CA-backed identity verification and does not remove Windows or SmartScreen warnings. Keisai never installs the certificate into the user's trust store.
 
-The application package is self-contained, and the startup helper statically links the MSVC CRT, so the destination PC does not require a separate .NET runtime or Visual C++ Redistributable installation. Keep the application folder together when carrying Keisai. For compatibility with older startup registrations, the ZIP also contains `YTEC-Sticky-Note.exe`, which launches the same application; new users should run `Keisai.exe`.
+The Store MSIX must be built with the Identity Name and Publisher supplied by Partner Center; these values are never guessed.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/package-msix.ps1 `
+  -PackageIdentityName '<Partner Center Identity Name>' `
+  -Publisher '<Partner Center Publisher>' `
+  -CreateUpload
+```
+
+The application package is self-contained, so the destination PC does not require a separate .NET runtime or Visual C++ Redistributable installation. Keep the application folder together when carrying Keisai. For compatibility with older startup registrations, the ZIP also contains `YTEC-Sticky-Note.exe`, which launches the same application; new users should run `Keisai.exe`.
 
 ## Out of scope
 
@@ -95,9 +115,7 @@ Keisai intentionally does not include multiple notes, cloud synchronization, aut
 
 ## Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
-
-The application process, review requirements, privacy policy, and GitHub Actions release procedure are documented in [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md). Until Keisai is accepted by SignPath Foundation or when the signing service is unavailable, distributed builds are explicitly labeled as unsigned and accompanied by SHA-256 checksums.
+Microsoft signs the Store package after certification. Until the SignPath Foundation application is resolved, direct Forge and GitHub downloads use a Y-TEC self-signed signature plus SHA-256. See [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) for the limitations of self-signing, private-key protection, and future provider migration.
 
 ## License and credits
 

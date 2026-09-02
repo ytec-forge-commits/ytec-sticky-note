@@ -1,4 +1,4 @@
-name: Build release candidate
+name: Build unsigned release candidate
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -33,9 +33,6 @@ jobs:
         run: |
           dotnet build tests/YtecStickyNote.Tests/YtecStickyNote.Tests.csproj -c Release --nologo
           dotnet run --project tests/YtecStickyNote.Tests/YtecStickyNote.Tests.csproj -c Release --no-build
-          cargo fmt --manifest-path src/YtecStickyNote.Startup/Cargo.toml --check
-          cargo test --manifest-path src/YtecStickyNote.Startup/Cargo.toml --release --locked
-          cargo clippy --manifest-path src/YtecStickyNote.Startup/Cargo.toml --locked --all-targets -- -D warnings
 
       - name: Confirm tag matches application version
         if: github.ref_type == 'tag'
@@ -66,7 +63,7 @@ jobs:
 
       - name: Verify packaged startup behavior
         shell: pwsh
-        run: ./scripts/test-startup-helper.ps1
+        run: ./scripts/test-startup-cache.ps1
 
       - name: Upload unsigned release artifact
         id: upload-unsigned
@@ -75,28 +72,13 @@ jobs:
           name: keisai-unsigned-${{ github.ref_name }}
           path: |
             artifacts/Keisai-win-x64/Keisai.exe
-            artifacts/Keisai-win-x64/YTEC-Sticky-Note-Startup.exe
             artifacts/Keisai-*-win-x64.zip
             artifacts/Keisai.pdf
             artifacts/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
 
-      - name: Create or update draft GitHub Release
-        if: github.ref_type == 'tag'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          [xml]$project = Get-Content src/YtecStickyNote/YtecStickyNote.csproj
-          $version = $project.Project.PropertyGroup.Version
-          $archive = "artifacts/Keisai-$version-win-x64.zip"
-          gh release view $env:GITHUB_REF_NAME *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $env:GITHUB_REF_NAME --draft --verify-tag --title "罫彩 $version" --generate-notes
-          }
-          gh release upload $env:GITHUB_REF_NAME $archive artifacts/Keisai.pdf artifacts/SHA256SUMS.txt --clobber
-
-# SignPath Foundationで採択後、upload-unsignedのartifact-idを
-# signpath/github-action-submit-signing-requestへ渡す署名ステップを追加します。
-# 採択前のArtifactとdraft Releaseは必ず「未署名」として扱います。
+# GitHub-hosted runnerには秘密鍵を配置しません。このworkflowは未署名candidateの
+# 検証と短期Artifact保存までです。公開Releaseはローカルの管理された工程で
+# scripts/package-self-signed-direct.ps1を実行し、署名検証後の成果物だけを登録します。
+# SignPath Foundation採択後は、upload-unsignedのArtifactをSignPathへ渡す工程へ移行できます。

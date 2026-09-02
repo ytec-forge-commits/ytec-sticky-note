@@ -18,7 +18,8 @@
         Loaded="Window_Loaded"
         Closing="Window_Closing"
         Closed="Window_Closed"
-        StateChanged="Window_StateChanged">
+        StateChanged="Window_StateChanged"
+        PreviewKeyDown="Window_PreviewKeyDown">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="44"
                       ResizeBorderThickness="7"
@@ -86,6 +87,10 @@
                                 <Setter TargetName="ButtonBorder" Property="Background" Value="#FFFDF7D7" />
                                 <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#806E5E2D" />
                             </Trigger>
+                            <Trigger Property="IsChecked" Value="{x:Null}">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#FFF7E7B4" />
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#806E5E2D" />
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -123,6 +128,43 @@
             </Setter>
         </Style>
 
+        <Style x:Key="FormatActionButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="31" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Margin" Value="1" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="#1E2F3A40" />
+            <Setter Property="Background" Value="#72FFFFFF" />
+            <Setter Property="Foreground" Value="#2E3438" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#EEFFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#FFFDF7D7" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style TargetType="ComboBox">
             <Setter Property="Height" Value="32" />
             <Setter Property="Margin" Value="2" />
@@ -138,6 +180,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="44" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
@@ -187,9 +230,14 @@
                             <Border Width="17" Height="1" Margin="0,1.5" Background="#A02E3438" />
                         </StackPanel>
                     </ToggleButton>
-                    <ToggleButton x:Name="BulletButton" Style="{StaticResource FormatButtonStyle}" ToolTip="箇条書き（Shift+Enterで項目内改行）" Click="BulletButton_Click">
+                    <ToggleButton x:Name="BulletButton" Style="{StaticResource FormatButtonStyle}" IsThreeState="True" ToolTip="箇条書き（Shift+Enterで項目内改行）" Click="BulletButton_Click">
                         <TextBlock Text="•≡" FontSize="13" />
                     </ToggleButton>
+
+                    <Button x:Name="UndoButton" Style="{StaticResource FormatActionButtonStyle}" Content="↶" ToolTip="元に戻す (Ctrl+Z)" Click="UndoButton_Click" IsEnabled="False" />
+                    <Button x:Name="RedoButton" Style="{StaticResource FormatActionButtonStyle}" Content="↷" ToolTip="やり直す (Ctrl+Y)" Click="RedoButton_Click" IsEnabled="False" />
+                    <Button x:Name="ClearFormattingButton" Style="{StaticResource FormatActionButtonStyle}" Content="T×" FontSize="12" ToolTip="文字装飾をクリア" Click="ClearFormattingButton_Click" />
+                    <Button x:Name="SearchButton" Style="{StaticResource FormatActionButtonStyle}" Content="⌕" ToolTip="検索 (Ctrl+F)" Click="SearchButton_Click" />
 
                     <Border Width="1" Height="24" Margin="4,4" Background="#283C3C36" />
 
@@ -232,9 +280,22 @@
                 </WrapPanel>
             </Border>
 
-            <Grid Grid.Row="2" ClipToBounds="True">
+            <Border x:Name="SearchPanel" Grid.Row="2" Visibility="Collapsed" Background="#A8FFFFFF" BorderBrush="#183C3C36" BorderThickness="0,0,0,1" Padding="8,4">
+                <WrapPanel VerticalAlignment="Center">
+                    <TextBlock Text="検索" FontSize="11" Margin="0,0,5,0" VerticalAlignment="Center" Foreground="#5E5B54" />
+                    <TextBox x:Name="SearchBox" Width="148" Height="28" Padding="5,2" VerticalContentAlignment="Center"
+                             ToolTip="現在のメモを検索" TextChanged="SearchBox_TextChanged" PreviewKeyDown="SearchBox_PreviewKeyDown" />
+                    <Button x:Name="SearchPreviousButton" Style="{StaticResource FormatActionButtonStyle}" Content="‹" ToolTip="前を検索 (Shift+Enter / Shift+F3)" Click="SearchPreviousButton_Click" />
+                    <Button x:Name="SearchNextButton" Style="{StaticResource FormatActionButtonStyle}" Content="›" ToolTip="次を検索 (Enter / F3)" Click="SearchNextButton_Click" />
+                    <TextBlock x:Name="SearchResultText" Text="0 / 0" MinWidth="42" Margin="5,0,0,0" FontSize="11" VerticalAlignment="Center" Foreground="#5E5B54" />
+                    <Button Style="{StaticResource FormatActionButtonStyle}" Content="×" ToolTip="検索を閉じる (Esc)" Click="CloseSearchButton_Click" />
+                </WrapPanel>
+            </Border>
+
+            <Grid Grid.Row="3" ClipToBounds="True">
                 <controls:NotePaper x:Name="Paper" LineHeight="30" TopPadding="10" RuleLift="0" IsHitTestVisible="False" />
                 <RichTextBox x:Name="Editor"
+                             IsReadOnly="True"
                              BorderThickness="0"
                              Background="Transparent"
                              Foreground="#2F3437"
@@ -251,9 +312,13 @@
                              PreviewKeyDown="Editor_PreviewKeyDown">
                     <RichTextBox.ContextMenu>
                         <ContextMenu>
+                            <MenuItem x:Name="UndoMenuItem" Header="元に戻す" InputGestureText="Ctrl+Z" Click="UndoButton_Click" IsEnabled="False" />
+                            <MenuItem x:Name="RedoMenuItem" Header="やり直す" InputGestureText="Ctrl+Y" Click="RedoButton_Click" IsEnabled="False" />
+                            <Separator />
                             <MenuItem Header="切り取り" Command="ApplicationCommands.Cut" />
                             <MenuItem Header="コピー" Command="ApplicationCommands.Copy" />
                             <MenuItem Header="貼り付け" Command="ApplicationCommands.Paste" />
+                            <MenuItem x:Name="PastePlainTextMenuItem" Header="テキストのみ貼り付け" InputGestureText="Ctrl+Shift+V" Click="PastePlainTextMenuItem_Click" />
                             <Separator />
                             <MenuItem Header="すべて選択" Command="ApplicationCommands.SelectAll" />
                         </ContextMenu>
@@ -275,9 +340,10 @@
                            VerticalAlignment="Top" />
             </Grid>
 
-            <Border x:Name="SettingsBar" Grid.Row="3" Background="#CFFFFFFF" BorderBrush="#183C3C36" BorderThickness="0,1,0,0" Padding="10,8">
+            <Border x:Name="SettingsBar" Grid.Row="4" Background="#CFFFFFFF" BorderBrush="#183C3C36" BorderThickness="0,1,0,0" Padding="10,8">
                 <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
@@ -294,7 +360,15 @@
                         <ToggleButton x:Name="ThemeGray" Tag="gray" Background="#F3F4F5" ToolTip="グレー" Style="{StaticResource ThemeButtonStyle}" Click="ThemeButton_Click" />
                         <ToggleButton x:Name="ThemeMocha" Tag="mocha" Background="#F4ECE4" ToolTip="モカ" Style="{StaticResource ThemeButtonStyle}" Click="ThemeButton_Click" />
                     </WrapPanel>
-                    <Grid Grid.Row="1" Margin="0,6,0,0">
+                    <WrapPanel Grid.Row="1" Margin="0,6,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="ページ" FontSize="11" Margin="0,0,5,0" VerticalAlignment="Center" Foreground="#5E5B54" />
+                        <Button x:Name="PreviousPageButton" Style="{StaticResource FormatActionButtonStyle}" Content="‹" ToolTip="前のページ" Click="PreviousPageButton_Click" IsEnabled="False" />
+                        <TextBlock x:Name="PageIndicatorText" Text="1 / 1" MinWidth="42" Margin="5,0" FontSize="11" VerticalAlignment="Center" Foreground="#5E5B54" TextAlignment="Center" />
+                        <Button x:Name="NextPageButton" Style="{StaticResource FormatActionButtonStyle}" Content="›" ToolTip="次のページ" Click="NextPageButton_Click" IsEnabled="False" />
+                        <Button x:Name="AddPageButton" Style="{StaticResource FormatActionButtonStyle}" Content="＋" FontSize="14" ToolTip="現在の次にページを追加" Click="AddPageButton_Click" />
+                        <Button x:Name="DeletePageButton" Style="{StaticResource FormatActionButtonStyle}" Content="−" FontSize="15" ToolTip="現在のページを削除" Click="DeletePageButton_Click" IsEnabled="False" />
+                    </WrapPanel>
+                    <Grid Grid.Row="2" Margin="0,6,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />

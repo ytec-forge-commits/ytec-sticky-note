@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -23,32 +25,53 @@ public partial class MainWindow : Window
     private const int WmDpiChanged = 0x02E0;
     private const double NoteLineHeight = 30;
     private static readonly Thickness NotePagePadding = new(64, 10, 22, 24);
-    private readonly PortableDataService _dataService = new();
-    private readonly WindowProfileService _windowProfileService = new();
-    private readonly StartupService _startupService = new();
+    private enum BulletState
+    {
+        Off,
+        On,
+        Mixed
+    }
+
+    private sealed record SearchMatch(TextPointer Start, TextPointer End);
+
+    private readonly AppRuntimeProfile _runtimeProfile;
+    private readonly PortableDataService _dataService;
+    private readonly WindowProfileService _windowProfileService;
+    private readonly IStartupController _startupController;
     private readonly DispatcherTimer _saveTimer;
     private readonly DispatcherTimer _statusTimer;
     private readonly DispatcherTimer _displayStabilizationTimer;
     private readonly WindowLayoutSession _windowLayoutSession = new();
+    private readonly List<SearchMatch> _searchMatches = new();
     private AppState _state = new();
     private bool _isLoading = true;
     private bool _isClosing;
     private bool _allowApplicationExit;
     private bool _trayAvailable = true;
     private bool _savingBlocked;
-    private bool _isNormalizingDocument;
     private bool _isUpdatingFormattingControls;
     private bool _isUpdatingAutoStartControl;
+    private bool _isSwitchingPage;
     private bool _documentRestoreFailed;
     private bool _isRestoringWindowPlacement;
     private bool _displaySettingsSubscribed;
     private bool _windowPlacementSavingBlocked;
     private bool _isUserMovingOrResizing;
+    private int _searchMatchIndex = -1;
     private HwndSource? _windowSource;
     private WindowState _windowStateBeforeTray = WindowState.Normal;
 
+    private bool CanMutatePersistedState => !_isLoading && !_savingBlocked && !_documentRestoreFailed;
+
     public MainWindow()
     {
+        _runtimeProfile = AppRuntimeProfile.Detect();
+        _dataService = new PortableDataService(_runtimeProfile.StorageBaseDirectory);
+        _windowProfileService = new WindowProfileService(_runtimeProfile.StorageBaseDirectory);
+        _startupController = _runtimeProfile.StartupBackend == StartupBackend.PackagedStartupTask
+            ? new PackagedStartupController()
+            : new PortableStartupController(new StartupService(sourceApplicationDirectory: _runtimeProfile.StorageBaseDirectory));
+
         InitializeComponent();
 
         _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(650) };
@@ -71,7 +94,7 @@ public partial class MainWindow : Window
         Editor.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(Editor_ScrollChanged));
     }
 
-    private void Window_Loaded(object sender, RoutedEventArgs e)
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         var loaded = _dataService.Load();
         _state = loaded.State;
@@ -82,24 +105,50 @@ public partial class MainWindow : Window
         _windowLayoutSession.Initialize(initialLayoutId, windowProfile.NeedsSave);
 
         LoadInstalledFonts();
-        ApplyTheme(_state.ThemeId);
-        LoadEditorContent();
-        NormalizeDocumentLayout();
+        _state.NormalizePages();
+        ApplyTheme(CurrentPage.ThemeId);
+        LoadEditorContent(CurrentPage);
 
         Topmost = _state.AlwaysOnTop;
         TopmostButton.IsChecked = Topmost;
 
         UpdatePlaceholder();
         UpdateFormattingButtons();
+        UpdateUndoRedoControls();
+        UpdatePageNavigationControls();
+        _isLoading = false;
+        UpdateMutationAvailability();
 
         var testMode = AppRuntimeOptions.IsTestMode;
         if (!testMode)
         {
             try
             {
-                SetAutoStartCheckState(_startupService.IsEnabledForCurrentExecutable());
+                var startupStatus = await _startupController.GetStatusAsync();
+                if (startupStatus == StartupRegistrationStatus.NeedsSecurityUpgrade)
+                {
+                    var response = MessageBox.Show(
+                        "以前の自動起動登録を、ウイルス対策ソフトと共存しやすい1.6.0方式へ更新する必要があります。\n\n" +
+                        "［はい］: 署名済みの罫彩本体をWindowsのローカル領域へコピーし、Google Drive上の保存データが準備できてから開く方式へ更新します。\n" +
+                        "［いいえ］: 古い自動起動登録を解除します。\n\n" +
+                        "安全のため、古い方式のまま残すことはできません。",
+                        "罫彩 - 自動起動の安全性更新",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Warning,
+                        MessageBoxResult.Yes);
+                    await _startupController.SetEnabledAsync(response == MessageBoxResult.Yes);
+                    startupStatus = await _startupController.GetStatusAsync();
+                    ShowStatus(
+                        startupStatus == StartupRegistrationStatus.Enabled
+                            ? "自動起動を安全な方式へ更新しました"
+                            : "古い自動起動登録を解除しました",
+                        sticky: true);
+                }
+
+                SetAutoStartCheckState(startupStatus == StartupRegistrationStatus.Enabled);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or SecurityException)
+            catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException or
+                SecurityException or COMException or System.Text.Json.JsonException)
             {
                 SetAutoStartCheckState(false);
                 ShowStatus("自動起動状態を確認できません", sticky: true);
@@ -109,8 +158,6 @@ public partial class MainWindow : Window
         _displaySettingsSubscribed = true;
         _windowSource = PresentationSource.FromVisual(this) as HwndSource;
         _windowSource?.AddHook(WindowMessageHook);
-        _isLoading = false;
-
         if (!string.IsNullOrWhiteSpace(loaded.Warning))
         {
             ShowStatus("読込エラー", sticky: true);
@@ -251,6 +298,71 @@ public partial class MainWindow : Window
         }
     }
 
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var modifiers = Keyboard.Modifiers;
+
+        if (e.Key == Key.F && modifiers == ModifierKeys.Control)
+        {
+            OpenSearchPanel();
+            e.Handled = true;
+            return;
+        }
+
+        if (SearchPanel.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            CloseSearchPanel();
+            e.Handled = true;
+            return;
+        }
+
+        if (SearchPanel.Visibility == Visibility.Visible && e.Key == Key.F3)
+        {
+            MoveSearchResult((modifiers & ModifierKeys.Shift) == ModifierKeys.Shift ? -1 : 1);
+            e.Handled = true;
+            return;
+        }
+
+        if (Editor.IsKeyboardFocusWithin &&
+            e.Key == Key.V &&
+            modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            PastePlainText();
+            e.Handled = true;
+            return;
+        }
+
+        if (CanMutatePersistedState && Editor.IsKeyboardFocusWithin && e.Key == Key.Enter && modifiers == ModifierKeys.Shift)
+        {
+            EditingCommands.EnterLineBreak.Execute(null, Editor);
+            e.Handled = true;
+        }
+    }
+
+    private void Editor_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!CanMutatePersistedState || Keyboard.Modifiers != ModifierKeys.None)
+        {
+            return;
+        }
+
+        var handled = e.Key switch
+        {
+            Key.Enter => RichTextListEditing.TryExitEmptyListItem(Editor),
+            Key.Back => RichTextListEditing.TryRemoveListMarkerAtItemStart(Editor),
+            _ => false
+        };
+        if (!handled)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        UpdateFormattingButtons();
+        UpdateUndoRedoControls();
+        ScheduleSave();
+    }
+
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount == 2)
@@ -327,7 +439,7 @@ public partial class MainWindow : Window
 
     private void TopmostButton_Changed(object sender, RoutedEventArgs e)
     {
-        if (_isLoading)
+        if (!CanMutatePersistedState)
         {
             return;
         }
@@ -339,6 +451,11 @@ public partial class MainWindow : Window
 
     private void BoldButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!CanMutatePersistedState)
+        {
+            return;
+        }
+
         EditingCommands.ToggleBold.Execute(null, Editor);
         Editor.Focus();
         ScheduleSave();
@@ -346,6 +463,11 @@ public partial class MainWindow : Window
 
     private void ItalicButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!CanMutatePersistedState)
+        {
+            return;
+        }
+
         EditingCommands.ToggleItalic.Execute(null, Editor);
         Editor.Focus();
         ScheduleSave();
@@ -357,6 +479,11 @@ public partial class MainWindow : Window
 
     private void CenterAlignButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!CanMutatePersistedState)
+        {
+            return;
+        }
+
         var isCentered = IsSelectionValue(Block.TextAlignmentProperty, TextAlignment.Center);
         Editor.Selection.ApplyPropertyValue(Block.TextAlignmentProperty, isCentered ? TextAlignment.Left : TextAlignment.Center);
         Editor.Focus();
@@ -366,35 +493,112 @@ public partial class MainWindow : Window
 
     private void BulletButton_Click(object sender, RoutedEventArgs e)
     {
-        EditingCommands.ToggleBullets.Execute(null, Editor);
-        NormalizeDocumentLayout();
-        Editor.Focus();
-        UpdateFormattingButtons();
-        ScheduleSave();
-    }
-
-    private void Editor_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.Enter || Keyboard.Modifiers != ModifierKeys.Shift ||
-            Editor.Selection.Start.Paragraph?.Parent is not ListItem)
+        if (!CanMutatePersistedState)
         {
             return;
         }
 
-        if (!Editor.Selection.IsEmpty)
+        var state = GetBulletState();
+        var selectionStart = Editor.Selection.Start;
+        var selectionEnd = Editor.Selection.End;
+
+        Editor.BeginChange();
+        try
         {
-            Editor.Selection.Text = string.Empty;
+            if (state == BulletState.On)
+            {
+                RemoveBulletsFromSelectedParagraphs();
+            }
+            else
+            {
+                ApplyDiscBulletsToUnbulletedParagraphs();
+            }
+
+            Editor.Selection.Select(selectionStart, selectionEnd);
+            ConfigureSelectedBulletLists();
+        }
+        finally
+        {
+            Editor.EndChange();
         }
 
-        var lineBreak = new LineBreak(Editor.CaretPosition);
-        Editor.CaretPosition = lineBreak.ElementEnd;
-        e.Handled = true;
-        NormalizeDocumentLayout();
+        Editor.Focus();
+        UpdateFormattingButtons();
+        UpdateUndoRedoControls();
         ScheduleSave();
+    }
+
+    private void ApplyDiscBulletsToUnbulletedParagraphs()
+    {
+        var selectedParagraphs = GetSelectedParagraphs();
+        if (selectedParagraphs.Count > 0 && selectedParagraphs.All(paragraph => GetContainingList(paragraph) is null))
+        {
+            Editor.Selection.Select(selectedParagraphs[0].ContentStart, selectedParagraphs[^1].ContentEnd);
+            EditingCommands.ToggleBullets.Execute(null, Editor);
+            return;
+        }
+
+        var paragraphs = selectedParagraphs
+            .Where(paragraph => !IsParagraphBulleted(paragraph))
+            .ToList();
+
+        foreach (var paragraph in paragraphs)
+        {
+            if (IsParagraphBulleted(paragraph))
+            {
+                continue;
+            }
+
+            Editor.Selection.Select(paragraph.ContentStart, paragraph.ContentEnd);
+            EditingCommands.ToggleBullets.Execute(null, Editor);
+        }
+    }
+
+    private void RemoveBulletsFromSelectedParagraphs()
+    {
+        var paragraphs = GetSelectedParagraphs()
+            .Where(IsParagraphBulleted)
+            .OrderByDescending(GetListDepth)
+            .ToList();
+
+        foreach (var paragraph in paragraphs)
+        {
+            if (!IsParagraphBulleted(paragraph))
+            {
+                continue;
+            }
+
+            Editor.Selection.Select(paragraph.ContentStart, paragraph.ContentEnd);
+            EditingCommands.ToggleBullets.Execute(null, Editor);
+        }
+    }
+
+    private void ConfigureSelectedBulletLists()
+    {
+        foreach (var list in GetSelectedParagraphs()
+                     .Select(GetContainingList)
+                     .Where(list => list is not null)
+                     .Cast<List>()
+                     .Distinct())
+        {
+            if (!IsUnorderedList(list))
+            {
+                continue;
+            }
+
+            list.MarkerStyle = TextMarkerStyle.Disc;
+            list.Margin = new Thickness(14, 0, 0, 0);
+            list.MarkerOffset = 12;
+        }
     }
 
     private void ToggleDecoration(TextDecorationLocation location)
     {
+        if (!CanMutatePersistedState)
+        {
+            return;
+        }
+
         var propertyValue = Editor.Selection.GetPropertyValue(Inline.TextDecorationsProperty);
         var current = propertyValue as TextDecorationCollection;
         var decorations = new TextDecorationCollection();
@@ -420,9 +624,277 @@ public partial class MainWindow : Window
         ScheduleSave();
     }
 
+    private void UndoButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanMutatePersistedState)
+        {
+            return;
+        }
+
+        if (Editor.CanUndo)
+        {
+            Editor.Undo();
+        }
+
+        Editor.Focus();
+        UpdateFormattingButtons();
+        UpdateUndoRedoControls();
+    }
+
+    private void RedoButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanMutatePersistedState)
+        {
+            return;
+        }
+
+        if (Editor.CanRedo)
+        {
+            Editor.Redo();
+        }
+
+        Editor.Focus();
+        UpdateFormattingButtons();
+        UpdateUndoRedoControls();
+    }
+
+    private void ClearFormattingButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanMutatePersistedState || Editor.Selection.IsEmpty)
+        {
+            Editor.Focus();
+            return;
+        }
+
+        Editor.BeginChange();
+        try
+        {
+            Editor.Selection.ApplyPropertyValue(TextElement.FontFamilyProperty, Editor.FontFamily);
+            Editor.Selection.ApplyPropertyValue(TextElement.FontSizeProperty, Editor.FontSize);
+            Editor.Selection.ApplyPropertyValue(TextElement.FontWeightProperty, Editor.FontWeight);
+            Editor.Selection.ApplyPropertyValue(TextElement.FontStyleProperty, Editor.FontStyle);
+            Editor.Selection.ApplyPropertyValue(TextElement.ForegroundProperty, Editor.Foreground);
+            Editor.Selection.ApplyPropertyValue(Inline.TextDecorationsProperty, new TextDecorationCollection());
+        }
+        finally
+        {
+            Editor.EndChange();
+        }
+
+        Editor.Focus();
+        UpdateFormattingButtons();
+        UpdateUndoRedoControls();
+        ScheduleSave();
+    }
+
+    private void PastePlainTextMenuItem_Click(object sender, RoutedEventArgs e) => PastePlainText();
+
+    private void PastePlainText()
+    {
+        if (Editor.IsReadOnly || !Clipboard.ContainsText(TextDataFormat.UnicodeText))
+        {
+            return;
+        }
+
+        var text = Clipboard.GetText(TextDataFormat.UnicodeText);
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        Editor.BeginChange();
+        try
+        {
+            Editor.Selection.Text = text;
+        }
+        finally
+        {
+            Editor.EndChange();
+        }
+
+        Editor.Focus();
+        UpdateFormattingButtons();
+        UpdateUndoRedoControls();
+        ScheduleSave();
+    }
+
+    private void SearchButton_Click(object sender, RoutedEventArgs e) => OpenSearchPanel();
+
+    private void CloseSearchButton_Click(object sender, RoutedEventArgs e) => CloseSearchPanel();
+
+    private void SearchPreviousButton_Click(object sender, RoutedEventArgs e)
+    {
+        MoveSearchResult(-1);
+        SearchBox.Focus();
+    }
+
+    private void SearchNextButton_Click(object sender, RoutedEventArgs e)
+    {
+        MoveSearchResult(1);
+        SearchBox.Focus();
+    }
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (IsLoaded && SearchPanel.Visibility == Visibility.Visible)
+        {
+            RefreshSearchResults(selectFirst: true);
+        }
+    }
+
+    private void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.F3))
+        {
+            return;
+        }
+
+        MoveSearchResult((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift ? -1 : 1);
+        e.Handled = true;
+    }
+
+    private void OpenSearchPanel()
+    {
+        SearchPanel.Visibility = Visibility.Visible;
+        RefreshSearchResults(selectFirst: true);
+        SearchBox.Focus();
+        SearchBox.SelectAll();
+    }
+
+    private void CloseSearchPanel()
+    {
+        SearchPanel.Visibility = Visibility.Collapsed;
+        Editor.Focus();
+    }
+
+    private void RefreshSearchResults(bool selectFirst)
+    {
+        _searchMatches.Clear();
+        _searchMatches.AddRange(FindSearchMatches(SearchBox.Text));
+
+        if (_searchMatches.Count == 0)
+        {
+            _searchMatchIndex = -1;
+            SearchResultText.Text = "0 / 0";
+            return;
+        }
+
+        if (selectFirst || _searchMatchIndex < 0 || _searchMatchIndex >= _searchMatches.Count)
+        {
+            _searchMatchIndex = 0;
+        }
+
+        SelectSearchResult(_searchMatchIndex);
+    }
+
+    private void MoveSearchResult(int direction)
+    {
+        if (_searchMatches.Count == 0)
+        {
+            RefreshSearchResults(selectFirst: true);
+        }
+
+        if (_searchMatches.Count == 0)
+        {
+            return;
+        }
+
+        _searchMatchIndex = _searchMatchIndex < 0
+            ? direction < 0 ? _searchMatches.Count - 1 : 0
+            : (_searchMatchIndex + direction + _searchMatches.Count) % _searchMatches.Count;
+        SelectSearchResult(_searchMatchIndex);
+    }
+
+    private void SelectSearchResult(int index)
+    {
+        var match = _searchMatches[index];
+        Editor.Selection.Select(match.Start, match.End);
+        match.Start.Paragraph?.BringIntoView();
+        SearchResultText.Text = $"{index + 1} / {_searchMatches.Count}";
+    }
+
+    private List<SearchMatch> FindSearchMatches(string query)
+    {
+        var matches = new List<SearchMatch>();
+        if (string.IsNullOrEmpty(query))
+        {
+            return matches;
+        }
+
+        var text = new StringBuilder();
+        var starts = new List<TextPointer?>();
+        var ends = new List<TextPointer?>();
+        foreach (var paragraph in EnumerateParagraphs(Editor.Document.Blocks))
+        {
+            AppendSearchableInlines(paragraph.Inlines, text, starts, ends);
+            AppendSearchSeparator(text, starts, ends);
+        }
+
+        var source = text.ToString();
+        var offset = 0;
+        while (offset <= source.Length - query.Length)
+        {
+            var matchIndex = source.IndexOf(query, offset, StringComparison.CurrentCultureIgnoreCase);
+            if (matchIndex < 0)
+            {
+                break;
+            }
+
+            var start = starts[matchIndex];
+            var end = ends[matchIndex + query.Length - 1];
+            if (start is not null && end is not null)
+            {
+                matches.Add(new SearchMatch(start, end));
+            }
+
+            offset = matchIndex + 1;
+        }
+
+        return matches;
+    }
+
+    private static void AppendSearchableInlines(
+        InlineCollection inlines,
+        StringBuilder text,
+        ICollection<TextPointer?> starts,
+        ICollection<TextPointer?> ends)
+    {
+        foreach (Inline inline in inlines)
+        {
+            switch (inline)
+            {
+                case Run run:
+                    var runText = run.Text ?? string.Empty;
+                    for (var index = 0; index < runText.Length; index++)
+                    {
+                        text.Append(runText[index]);
+                        starts.Add(run.ContentStart.GetPositionAtOffset(index, LogicalDirection.Forward));
+                        ends.Add(run.ContentStart.GetPositionAtOffset(index + 1, LogicalDirection.Forward));
+                    }
+                    break;
+                case Span span:
+                    AppendSearchableInlines(span.Inlines, text, starts, ends);
+                    break;
+                default:
+                    AppendSearchSeparator(text, starts, ends);
+                    break;
+            }
+        }
+    }
+
+    private static void AppendSearchSeparator(
+        StringBuilder text,
+        ICollection<TextPointer?> starts,
+        ICollection<TextPointer?> ends)
+    {
+        text.Append('\n');
+        starts.Add(null);
+        ends.Add(null);
+    }
+
     private void FontFamilyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!IsLoaded || _isLoading || _isUpdatingFormattingControls || FontFamilyCombo.SelectedItem is not FontChoice font)
+        if (!IsLoaded || !CanMutatePersistedState || _isUpdatingFormattingControls || FontFamilyCombo.SelectedItem is not FontChoice font)
         {
             return;
         }
@@ -435,7 +907,7 @@ public partial class MainWindow : Window
 
     private void FontSizeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!IsLoaded || _isLoading || _isUpdatingFormattingControls || FontSizeCombo.SelectedItem is not ComboBoxItem item ||
+        if (!IsLoaded || !CanMutatePersistedState || _isUpdatingFormattingControls || FontSizeCombo.SelectedItem is not ComboBoxItem item ||
             !double.TryParse(item.Tag as string, out var size))
         {
             return;
@@ -449,7 +921,7 @@ public partial class MainWindow : Window
 
     private void FontColorCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!IsLoaded || _isLoading || _isUpdatingFormattingControls ||
+        if (!IsLoaded || !CanMutatePersistedState || _isUpdatingFormattingControls ||
             FontColorCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string colorText)
         {
             return;
@@ -464,20 +936,19 @@ public partial class MainWindow : Window
 
     private void ThemeButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not ToggleButton button || button.Tag is not string themeId)
+        if (!CanMutatePersistedState || _isSwitchingPage || sender is not ToggleButton button || button.Tag is not string themeId)
         {
             return;
         }
 
         ApplyTheme(themeId);
-        _state.ThemeId = themeId;
+        CurrentPage.ThemeId = NoteTheme.Find(themeId).Id;
         ScheduleSave();
     }
 
     private void ApplyTheme(string? themeId)
     {
         var theme = NoteTheme.Find(themeId);
-        _state.ThemeId = theme.Id;
 
         Paper.PaperColor = theme.Paper;
         Paper.RuleColor = theme.Rule;
@@ -509,7 +980,155 @@ public partial class MainWindow : Window
         yield return ThemeMocha;
     }
 
-    private void AutoStartCheck_Changed(object sender, RoutedEventArgs e)
+    private NotePageState CurrentPage => _state.GetCurrentPage();
+
+    private void PreviousPageButton_Click(object sender, RoutedEventArgs e) => MoveToAdjacentPage(-1);
+
+    private void NextPageButton_Click(object sender, RoutedEventArgs e) => MoveToAdjacentPage(1);
+
+    private void AddPageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanMutatePersistedState || _state.Pages.Count >= AppState.MaximumPageCount)
+        {
+            return;
+        }
+
+        CaptureCurrentPage();
+        var insertionIndex = _state.GetCurrentPageIndex() + 1;
+        var addedPage = new NotePageState
+        {
+            ThemeId = CurrentPage.ThemeId
+        };
+        _state.Pages.Insert(insertionIndex, addedPage);
+        _state.CurrentPageId = addedPage.Id;
+        RestoreCurrentPageAfterSwitch();
+        ScheduleSave();
+    }
+
+    private void DeletePageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanMutatePersistedState || _state.Pages.Count <= 1)
+        {
+            return;
+        }
+
+        var confirmed = AppRuntimeOptions.IsTestMode ||
+            MessageBox.Show(
+                "現在のページを削除します。本文と書式は元に戻せません。\n\n削除してよろしいですか？",
+                "罫彩 - ページを削除",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) == MessageBoxResult.Yes;
+        if (!confirmed)
+        {
+            return;
+        }
+
+        CaptureCurrentPage();
+        var removedIndex = _state.GetCurrentPageIndex();
+        _state.Pages.RemoveAt(removedIndex);
+        var nextIndex = Math.Min(removedIndex, _state.Pages.Count - 1);
+        _state.CurrentPageId = _state.Pages[nextIndex].Id;
+        RestoreCurrentPageAfterSwitch();
+        ScheduleSave();
+    }
+
+    private void MoveToAdjacentPage(int offset)
+    {
+        if (!CanMutatePersistedState)
+        {
+            return;
+        }
+
+        var destinationIndex = _state.GetCurrentPageIndex() + offset;
+        if (destinationIndex < 0 || destinationIndex >= _state.Pages.Count)
+        {
+            return;
+        }
+
+        CaptureCurrentPage();
+        _state.CurrentPageId = _state.Pages[destinationIndex].Id;
+        RestoreCurrentPageAfterSwitch();
+        ScheduleSave();
+    }
+
+    private void RestoreCurrentPageAfterSwitch()
+    {
+        _isSwitchingPage = true;
+        try
+        {
+            ApplyTheme(CurrentPage.ThemeId);
+            LoadEditorContent(CurrentPage);
+            ClearUndoHistory();
+        }
+        finally
+        {
+            _isSwitchingPage = false;
+        }
+
+        UpdatePlaceholder();
+        UpdateFormattingButtons();
+        UpdateUndoRedoControls();
+        UpdatePageNavigationControls();
+        UpdateMutationAvailability();
+        if (SearchPanel.Visibility == Visibility.Visible)
+        {
+            RefreshSearchResults(selectFirst: true);
+        }
+
+        if (_documentRestoreFailed)
+        {
+            ShowStatus("本文を復元できません", sticky: true);
+        }
+
+        Editor.Focus();
+    }
+
+    private void ClearUndoHistory()
+    {
+        Editor.UndoLimit = 0;
+        Editor.UndoLimit = -1;
+    }
+
+    private void UpdatePageNavigationControls()
+    {
+        _state.NormalizePages();
+        var currentIndex = _state.GetCurrentPageIndex();
+        var pageCount = _state.Pages.Count;
+        var canNavigate = CanMutatePersistedState;
+        var canModifyPages = CanMutatePersistedState;
+
+        PreviousPageButton.IsEnabled = canNavigate && currentIndex > 0;
+        NextPageButton.IsEnabled = canNavigate && currentIndex < pageCount - 1;
+        AddPageButton.IsEnabled = canModifyPages && pageCount < AppState.MaximumPageCount;
+        DeletePageButton.IsEnabled = canModifyPages && pageCount > 1;
+        PageIndicatorText.Text = $"{currentIndex + 1} / {pageCount}";
+    }
+
+    private void UpdateMutationAvailability()
+    {
+        var canMutate = CanMutatePersistedState;
+        Editor.IsReadOnly = !canMutate;
+        foreach (var control in new Control[]
+                 {
+                     BoldButton, ItalicButton, UnderlineButton, StrikeButton, CenterAlignButton, BulletButton,
+                     ClearFormattingButton, FontFamilyCombo, FontSizeCombo, FontColorCombo, TopmostButton
+                 })
+        {
+            control.IsEnabled = canMutate;
+        }
+
+        foreach (var themeButton in GetThemeButtons())
+        {
+            themeButton.IsEnabled = canMutate;
+        }
+
+        PastePlainTextMenuItem.IsEnabled = canMutate;
+        UpdateUndoRedoControls();
+        UpdatePageNavigationControls();
+    }
+
+    private async void AutoStartCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (_isLoading || _isUpdatingAutoStartControl || AppRuntimeOptions.IsTestMode)
         {
@@ -519,11 +1138,16 @@ public partial class MainWindow : Window
         var enabled = AutoStartCheck.IsChecked == true;
         if (enabled)
         {
+            var confirmationText = _runtimeProfile.StartupBackend == StartupBackend.PackagedStartupTask
+                ? "Windowsサインイン時の自動起動を有効にします。\n\n" +
+                  "Microsoft Store版のWindowsスタートアップ設定へ罫彩を登録します。\n\n" +
+                  "登録してよろしいですか？"
+                : "Windowsサインイン時の自動起動を有効にします。\n\n" +
+                  "現在のWindowsユーザーの自動起動設定へ、ローカルにコピーした署名済みの罫彩本体を登録します。" +
+                  "Google Drive上の保存データを読み書きできる状態になるまで最大10分待機します。\n\n" +
+                  "登録してよろしいですか？";
             var confirmed = MessageBox.Show(
-                "Windowsサインイン時の自動起動を有効にします。\n\n" +
-                "現在のWindowsユーザーの自動起動設定と、ローカルの待機プログラムを登録します。" +
-                "Google Drive上では、アプリと保存データを読み書きできる状態になるまで最大10分待機します。\n\n" +
-                "登録してよろしいですか？",
+                confirmationText,
                 "罫彩 - 自動起動の確認",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question,
@@ -537,10 +1161,13 @@ public partial class MainWindow : Window
 
         try
         {
-            _startupService.SetEnabled(enabled);
+            AutoStartCheck.IsEnabled = false;
+            await _startupController.SetEnabledAsync(enabled);
+            SetAutoStartCheckState(await _startupController.IsEnabledAsync());
             ShowStatus(enabled ? "自動起動を登録しました" : "自動起動を解除しました");
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or SecurityException)
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException or
+            SecurityException or COMException or System.Text.Json.JsonException)
         {
             SetAutoStartCheckState(!enabled);
             MessageBox.Show(
@@ -548,6 +1175,10 @@ public partial class MainWindow : Window
                 "罫彩",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
+        }
+        finally
+        {
+            AutoStartCheck.IsEnabled = true;
         }
     }
 
@@ -580,18 +1211,25 @@ public partial class MainWindow : Window
     private void Editor_TextChanged(object sender, TextChangedEventArgs e)
     {
         UpdatePlaceholder();
-        if (!_isLoading && !_isNormalizingDocument)
+        if (!_isLoading && !_isSwitchingPage)
         {
-            NormalizeDocumentLayout();
+            UpdateFormattingButtons();
+            UpdateUndoRedoControls();
+            if (SearchPanel.Visibility == Visibility.Visible)
+            {
+                RefreshSearchResults(selectFirst: true);
+            }
+
             ScheduleSave();
         }
     }
 
     private void Editor_SelectionChanged(object sender, RoutedEventArgs e)
     {
-        if (!_isLoading)
+        if (!_isLoading && !_isSwitchingPage)
         {
             UpdateFormattingButtons();
+            UpdateUndoRedoControls();
         }
     }
 
@@ -627,7 +1265,12 @@ public partial class MainWindow : Window
             UnderlineButton.IsChecked = decorations?.Any(item => item.Location == TextDecorationLocation.Underline) == true;
             StrikeButton.IsChecked = decorations?.Any(item => item.Location == TextDecorationLocation.Strikethrough) == true;
             CenterAlignButton.IsChecked = IsSelectionValue(Block.TextAlignmentProperty, TextAlignment.Center);
-            BulletButton.IsChecked = Editor.Selection.Start.Paragraph?.Parent is ListItem;
+            BulletButton.IsChecked = GetBulletState() switch
+            {
+                BulletState.On => true,
+                BulletState.Mixed => null,
+                _ => false
+            };
 
             UpdateFontFamilySelection();
             UpdateTaggedComboSelection(FontSizeCombo, GetSelectionFontSize());
@@ -637,6 +1280,15 @@ public partial class MainWindow : Window
         {
             _isUpdatingFormattingControls = false;
         }
+    }
+
+    private void UpdateUndoRedoControls()
+    {
+        var canMutate = CanMutatePersistedState;
+        UndoButton.IsEnabled = canMutate && Editor.CanUndo;
+        RedoButton.IsEnabled = canMutate && Editor.CanRedo;
+        UndoMenuItem.IsEnabled = canMutate && Editor.CanUndo;
+        RedoMenuItem.IsEnabled = canMutate && Editor.CanRedo;
     }
 
     private void UpdateFontFamilySelection()
@@ -678,6 +1330,177 @@ public partial class MainWindow : Window
         return value != DependencyProperty.UnsetValue && Equals(value, expected);
     }
 
+    private BulletState GetBulletState()
+    {
+        var hasBulletedParagraph = false;
+        var hasOtherParagraph = false;
+        TextMarkerStyle? markerStyle = null;
+        int? listDepth = null;
+
+        foreach (var paragraph in GetSelectedParagraphs())
+        {
+            var list = GetContainingList(paragraph);
+            if (list is not null && IsUnorderedList(list))
+            {
+                hasBulletedParagraph = true;
+                var paragraphDepth = GetListDepth(paragraph);
+                if (markerStyle is null)
+                {
+                    markerStyle = list.MarkerStyle;
+                    listDepth = paragraphDepth;
+                }
+                else if (markerStyle != list.MarkerStyle || listDepth != paragraphDepth)
+                {
+                    return BulletState.Mixed;
+                }
+            }
+            else
+            {
+                hasOtherParagraph = true;
+            }
+
+            if (hasBulletedParagraph && hasOtherParagraph)
+            {
+                return BulletState.Mixed;
+            }
+        }
+
+        return hasBulletedParagraph ? BulletState.On : BulletState.Off;
+    }
+
+    private List<Paragraph> GetSelectedParagraphs()
+    {
+        var selection = Editor.Selection;
+        var paragraphs = new List<Paragraph>();
+        foreach (var paragraph in EnumerateParagraphs(Editor.Document.Blocks))
+        {
+            var isSelected = selection.IsEmpty
+                ? paragraph == selection.Start.Paragraph
+                : paragraph.ContentStart.CompareTo(selection.End) < 0 &&
+                  paragraph.ContentEnd.CompareTo(selection.Start) > 0;
+            if (isSelected)
+            {
+                paragraphs.Add(paragraph);
+            }
+        }
+
+        AddParagraphIfMissing(paragraphs, selection.Start.Paragraph);
+        AddParagraphIfMissing(paragraphs, selection.End.Paragraph);
+        return paragraphs;
+    }
+
+    private static void AddParagraphIfMissing(ICollection<Paragraph> paragraphs, Paragraph? paragraph)
+    {
+        if (paragraph is not null && !paragraphs.Contains(paragraph))
+        {
+            paragraphs.Add(paragraph);
+        }
+    }
+
+    private static IEnumerable<Paragraph> EnumerateParagraphs(BlockCollection blocks)
+    {
+        foreach (Block block in blocks)
+        {
+            switch (block)
+            {
+                case Paragraph paragraph:
+                    yield return paragraph;
+                    break;
+                case Section section:
+                    foreach (var paragraph in EnumerateParagraphs(section.Blocks))
+                    {
+                        yield return paragraph;
+                    }
+                    break;
+                case List list:
+                    foreach (ListItem item in list.ListItems)
+                    {
+                        foreach (var paragraph in EnumerateParagraphs(item.Blocks))
+                        {
+                            yield return paragraph;
+                        }
+                    }
+                    break;
+            }
+        }
+    }
+
+    private static bool IsParagraphBulleted(Paragraph paragraph) =>
+        GetContainingList(paragraph) is { } list && IsUnorderedList(list);
+
+    private static List? GetContainingList(Paragraph paragraph)
+    {
+        TextElement? element = paragraph;
+        while (element?.Parent is TextElement parent)
+        {
+            if (parent is List list)
+            {
+                return list;
+            }
+
+            element = parent;
+        }
+
+        return null;
+    }
+
+    private static int GetListDepth(Paragraph paragraph)
+    {
+        var depth = 0;
+        TextElement? element = paragraph;
+        while (element?.Parent is TextElement parent)
+        {
+            if (parent is List)
+            {
+                depth++;
+            }
+
+            element = parent;
+        }
+
+        return depth;
+    }
+
+    private static bool IsUnorderedList(List list) =>
+        list.MarkerStyle >= TextMarkerStyle.Disc && list.MarkerStyle <= TextMarkerStyle.Box;
+
+    private void ApplyDocumentLineLayout()
+    {
+        Editor.Document.PagePadding = NotePagePadding;
+        Editor.Document.LineHeight = NoteLineHeight;
+        Editor.Document.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
+        ApplyBlockLineLayout(Editor.Document.Blocks);
+    }
+
+    private static void ApplyBlockLineLayout(BlockCollection blocks)
+    {
+        foreach (Block block in blocks)
+        {
+            block.LineHeight = NoteLineHeight;
+            block.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
+            block.Margin = new Thickness(0);
+            block.Padding = new Thickness(0);
+
+            switch (block)
+            {
+                case Paragraph paragraph:
+                    paragraph.TextIndent = 0;
+                    break;
+                case Section section:
+                    ApplyBlockLineLayout(section.Blocks);
+                    break;
+                case List list:
+                    list.Margin = new Thickness(14, 0, 0, 0);
+                    list.MarkerOffset = 12;
+                    foreach (ListItem item in list.ListItems)
+                    {
+                        ApplyBlockLineLayout(item.Blocks);
+                    }
+                    break;
+            }
+        }
+    }
+
     private void LoadInstalledFonts()
     {
         var fonts = FontCatalog.GetInstalledFonts();
@@ -688,63 +1511,13 @@ public partial class MainWindow : Window
             fonts.FirstOrDefault();
     }
 
-    private void NormalizeDocumentLayout()
-    {
-        if (_isNormalizingDocument)
-        {
-            return;
-        }
-
-        _isNormalizingDocument = true;
-        try
-        {
-            Editor.Document.PagePadding = NotePagePadding;
-            Editor.Document.LineHeight = NoteLineHeight;
-            Editor.Document.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
-            NormalizeBlocks(Editor.Document.Blocks);
-        }
-        finally
-        {
-            _isNormalizingDocument = false;
-        }
-    }
-
-    private static void NormalizeBlocks(BlockCollection blocks)
-    {
-        foreach (var block in blocks)
-        {
-            block.LineHeight = NoteLineHeight;
-            block.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
-            block.Margin = new Thickness(0);
-            block.Padding = new Thickness(0);
-
-            if (block is Paragraph paragraph)
-            {
-                paragraph.TextIndent = 0;
-            }
-            else if (block is Section section)
-            {
-                NormalizeBlocks(section.Blocks);
-            }
-            else if (block is List list)
-            {
-                list.Margin = new Thickness(14, 0, 0, 0);
-                list.MarkerOffset = 12;
-                foreach (var item in list.ListItems)
-                {
-                    NormalizeBlocks(item.Blocks);
-                }
-            }
-        }
-    }
-
-    private void LoadEditorContent()
+    private void LoadEditorContent(NotePageState page)
     {
         var result = DocumentPersistence.Restore(
             Editor.Document,
-            _state.RichTextXamlPackageBase64,
-            _state.RichTextRtfBase64);
-        NormalizeDocumentLayout();
+            page.RichTextXamlPackageBase64,
+            page.RichTextRtfBase64);
+        ApplyDocumentLineLayout();
         if (result == DocumentRestoreResult.Failed)
         {
             _documentRestoreFailed = true;
@@ -791,7 +1564,7 @@ public partial class MainWindow : Window
             ShowStatus("保存済み");
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException or
             ArgumentException or NotSupportedException or System.Text.Json.JsonException)
         {
             ShowStatus("保存できません", sticky: true);
@@ -810,11 +1583,18 @@ public partial class MainWindow : Window
 
     private void CaptureState()
     {
-        var document = DocumentPersistence.Capture(Editor.Document);
-        _state.RichTextXamlPackageBase64 = document.XamlPackageBase64;
-        _state.RichTextRtfBase64 = document.RtfBase64;
-        _state.PlainText = document.PlainText;
+        CaptureCurrentPage();
+        _state.MirrorCurrentPageToLegacyFields();
         _state.AlwaysOnTop = Topmost;
+    }
+
+    private void CaptureCurrentPage()
+    {
+        var document = DocumentPersistence.Capture(Editor.Document);
+        var page = CurrentPage;
+        page.RichTextXamlPackageBase64 = document.XamlPackageBase64;
+        page.RichTextRtfBase64 = document.RtfBase64;
+        page.PlainText = document.PlainText;
     }
 
     private WindowStateData CaptureWindowPlacement()

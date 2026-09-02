@@ -8,14 +8,11 @@
 
 ## Development
 
-必要な環境はWindows、.NET 10 SDK、Rust stableです。
+必要な環境はWindowsと.NET 10 SDKです。
 
 ```powershell
 dotnet build tests/YtecStickyNote.Tests/YtecStickyNote.Tests.csproj -c Release
 dotnet run --project tests/YtecStickyNote.Tests/YtecStickyNote.Tests.csproj -c Release --no-build
-cargo fmt --manifest-path src/YtecStickyNote.Startup/Cargo.toml --check
-cargo test --manifest-path src/YtecStickyNote.Startup/Cargo.toml --release --locked
-cargo clippy --manifest-path src/YtecStickyNote.Startup/Cargo.toml --locked --all-targets -- -D warnings
 dotnet build src/YtecStickyNote/YtecStickyNote.csproj -c Release
 ```
 

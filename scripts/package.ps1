@@ -5,32 +5,33 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $productName = 'Keisai'
-$productVersion = '1.5.4'
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $artifactRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts'))
+$projectFile = Join-Path $projectRoot 'src\YtecStickyNote\YtecStickyNote.csproj'
+[xml]$projectDefinition = Get-Content -LiteralPath $projectFile -Raw -Encoding UTF8
+$productVersion = [string]$projectDefinition.Project.PropertyGroup.Version
+if ([string]::IsNullOrWhiteSpace($productVersion)) {
+    throw 'Application version is missing from YtecStickyNote.csproj.'
+}
 $publishDirectory = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot "$productName-$Runtime"))
 $stagingDirectory = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot ".package-staging-$Runtime"))
 $zipPath = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot "$productName-$productVersion-$Runtime.zip"))
 $checksumPath = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot "$productName-$productVersion-$Runtime.sha256.txt"))
-$projectFile = Join-Path $projectRoot 'src\YtecStickyNote\YtecStickyNote.csproj'
-$startupManifest = Join-Path $projectRoot 'src\YtecStickyNote.Startup\Cargo.toml'
-$startupExecutable = Join-Path $projectRoot 'src\YtecStickyNote.Startup\target\release\YTEC-Sticky-Note-Startup.exe'
 $manualFileName = -join @(
     [char]0x7F6B, [char]0x5F69, '_',
     [char]0x64CD, [char]0x4F5C, [char]0x8AAC, [char]0x660E, [char]0x66F8,
     '.pdf'
 )
 $manualPath = Join-Path $projectRoot (Join-Path 'output\pdf' $manualFileName)
-$dotnetExe = Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'
 $userDotnetExe = Join-Path $env:USERPROFILE '.dotnet\dotnet.exe'
-$cargoExe = (Get-Command cargo -ErrorAction Stop).Source
+$systemDotnetExe = Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'
 
-if (-not (Test-Path -LiteralPath $dotnetExe)) {
-    $dotnetExe = if (Test-Path -LiteralPath $userDotnetExe) {
-        $userDotnetExe
-    } else {
-        (Get-Command dotnet -ErrorAction Stop).Source
-    }
+$dotnetExe = if (Test-Path -LiteralPath $userDotnetExe) {
+    $userDotnetExe
+} elseif (Test-Path -LiteralPath $systemDotnetExe) {
+    $systemDotnetExe
+} else {
+    (Get-Command dotnet -ErrorAction Stop).Source
 }
 
 if (-not (Test-Path -LiteralPath $manualPath)) {
@@ -60,20 +61,6 @@ if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE."
 }
 
-Push-Location -LiteralPath $projectRoot
-try {
-    & $cargoExe build --manifest-path $startupManifest --release --locked
-    $cargoExitCode = $LASTEXITCODE
-} finally {
-    Pop-Location
-}
-if ($cargoExitCode -ne 0) {
-    throw "cargo build failed with exit code $cargoExitCode."
-}
-
-& (Join-Path $PSScriptRoot 'check-startup-dependencies.ps1') -ExecutablePath $startupExecutable
-
-Copy-Item -LiteralPath $startupExecutable -Destination (Join-Path $stagingDirectory 'YTEC-Sticky-Note-Startup.exe')
 Copy-Item -LiteralPath (Join-Path $stagingDirectory 'YTEC-Sticky-Note.exe') -Destination (Join-Path $stagingDirectory 'Keisai.exe')
 Copy-Item -LiteralPath (Join-Path $stagingDirectory 'YTEC-Sticky-Note.dll') -Destination (Join-Path $stagingDirectory 'Keisai.dll')
 Copy-Item -LiteralPath (Join-Path $stagingDirectory 'YTEC-Sticky-Note.deps.json') -Destination (Join-Path $stagingDirectory 'Keisai.deps.json')
@@ -85,6 +72,13 @@ Copy-Item -LiteralPath (Join-Path $projectRoot 'THIRD_PARTY_NOTICES.md') -Destin
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\PRIVACY.txt') -Destination (Join-Path $stagingDirectory 'PRIVACY.txt')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'CHANGELOG.md') -Destination (Join-Path $stagingDirectory 'CHANGELOG.txt')
 Copy-Item -LiteralPath $manualPath -Destination (Join-Path $stagingDirectory $manualFileName)
+& (Join-Path $PSScriptRoot 'collect-third-party-licenses.ps1') `
+    -DestinationRoot (Join-Path $stagingDirectory 'third-party-licenses') `
+    -DotnetExecutable $dotnetExe
+$minimumZipTimestamp = [datetime]'1980-01-01T00:00:00'
+Get-ChildItem -LiteralPath $stagingDirectory -Recurse -Force |
+    Where-Object { $_.LastWriteTime -lt $minimumZipTimestamp } |
+    ForEach-Object { $_.LastWriteTime = $minimumZipTimestamp }
 Compress-Archive -Path (Join-Path $stagingDirectory '*') -DestinationPath $zipPath -CompressionLevel Optimal
 $zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerInvariant()
 Set-Content -LiteralPath $checksumPath -Value "$zipHash  $([System.IO.Path]::GetFileName($zipPath))" -Encoding ascii

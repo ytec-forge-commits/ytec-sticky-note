@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import struct
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -27,7 +28,7 @@ from reportlab.platypus import (
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = ROOT / "output" / "pdf"
 OUTPUT_PATH = OUTPUT_DIR / "罫彩_操作説明書.pdf"
-SCREENSHOT_PATH = ROOT / "artifacts" / "visual-test" / "keisai-1.5.0-sakura-520x620.png"
+SCREENSHOT_PATH = ROOT / "artifacts" / "visual-test" / "keisai-1.6.0-sakura-520x620.png"
 ICON_PATH = ROOT / "src" / "YtecStickyNote" / "Assets" / "app-icon.png"
 
 FONT_REGULAR = Path(r"C:\Windows\Fonts\YuGothR.ttc")
@@ -46,10 +47,45 @@ LINE = colors.HexColor("#C9DCE8")
 WHITE = colors.white
 
 
+def read_embedding_flags(path: Path) -> int:
+    data = path.read_bytes()
+    if len(data) < 12:
+        raise ValueError(f"フォントファイルが短すぎます: {path}")
+
+    sfnt_offset = 0
+    if data[:4] == b"ttcf":
+        if len(data) < 16:
+            raise ValueError(f"TTCヘッダーが不正です: {path}")
+        sfnt_offset = struct.unpack_from(">I", data, 12)[0]
+
+    table_count = struct.unpack_from(">H", data, sfnt_offset + 4)[0]
+    for index in range(table_count):
+        record_offset = sfnt_offset + 12 + (index * 16)
+        if data[record_offset : record_offset + 4] != b"OS/2":
+            continue
+        table_offset = struct.unpack_from(">I", data, record_offset + 8)[0]
+        return struct.unpack_from(">H", data, table_offset + 8)[0]
+
+    raise ValueError(f"フォントにOS/2テーブルがありません: {path}")
+
+
+def validate_document_embedding(path: Path) -> None:
+    flags = read_embedding_flags(path)
+    disallowed = flags & (0x0002 | 0x0100 | 0x0200)
+    if disallowed:
+        raise PermissionError(
+            f"文書へのサブセット埋め込みが許可されていないフォントです: {path} "
+            f"(OS/2.fsType=0x{flags:04X})"
+        )
+
+
 def register_fonts() -> None:
     missing = [str(path) for path in (FONT_REGULAR, FONT_BOLD) if not path.exists()]
     if missing:
         raise FileNotFoundError(f"操作説明書に必要なフォントが見つかりません: {', '.join(missing)}")
+
+    for font_path in (FONT_REGULAR, FONT_BOLD):
+        validate_document_embedding(font_path)
 
     pdfmetrics.registerFont(TTFont("YuGothic", str(FONT_REGULAR)))
     pdfmetrics.registerFont(TTFont("YuGothic-Bold", str(FONT_BOLD)))
@@ -363,9 +399,9 @@ def note_box(title: str, body: str, styles: dict[str, ParagraphStyle], warning: 
 
 
 def toolbar_table(styles: dict[str, ParagraphStyle]) -> Table:
-    labels = ["太字", "斜体", "下線", "取消線", "中央", "箇条書き", "フォント", "サイズ", "文字色"]
-    values = ["B", "/", "U", "S", "=", "・", "Yu Gothic UI", "14", "黒"]
-    widths = [14, 14, 14, 17, 17, 22, 34, 18, 20]
+    labels = ["太字", "斜体", "下線", "取消線", "中央", "箇条書き", "Undo", "Redo", "検索", "フォント", "サイズ", "文字色"]
+    values = ["B", "/", "U", "S", "=", "・", "戻", "進", "検索", "Yu Gothic UI", "14", "黒"]
+    widths = [10, 10, 10, 12, 12, 15, 12, 12, 14, 27, 14, 15]
     table = Table(
         [
             [Paragraph(label, styles["label"]) for label in labels],
@@ -404,7 +440,7 @@ def draw_page(canvas, doc) -> None:
     canvas.drawString(20 * mm, 11 * mm, "罫彩 操作説明書")
     canvas.setFont("YuGothic", 7.5)
     canvas.setFillColor(MUTED)
-    canvas.drawRightString(width - 20 * mm, 11 * mm, f"1.5.4  |  {page}")
+    canvas.drawRightString(width - 20 * mm, 11 * mm, f"1.6.0  |  {page}")
     canvas.setStrokeColor(LINE)
     canvas.setLineWidth(0.4)
     canvas.line(20 * mm, 16 * mm, width - 20 * mm, 16 * mm)
@@ -450,13 +486,13 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
     story.append(
         note_box(
             "最初の起動時",
-            "Windowsの保護画面が表示された場合は、配布ページのSHA-256とZIPの値を確認してください。本アプリはデジタル署名されていません。",
+            "ポータブル版はY-TECの自己署名です。一般の認証局による署名ではないため、Windowsの警告が表示される場合があります。配布ページのSHA-256とZIPの値も確認してください。",
             styles,
             warning=True,
         )
     )
     story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph("対応環境: Windows 10 / 11（64-bit）　　発行: 2026年8月25日", styles["small"]))
+    story.append(Paragraph("対応環境: Windows 10 / 11（64-bit）　　発行: 2026年9月3日", styles["small"]))
     story.append(PageBreak())
 
     # 2. Screen overview
@@ -480,8 +516,8 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
         step_row(1, "タイトルバー", "ドラッグで好きな場所へ移動できます。位置とウィンドウサイズは自動保存されます。", styles, 55 * mm),
         step_row(2, "書式ツールバー", "フォント、サイズ、色、太字などを選択範囲や現在位置へ適用します。", styles, 55 * mm),
         step_row(3, "ノート本文", "文字の下端が罫線へ自然に合い、赤い縦罫線より右側へ入力されます。", styles, 55 * mm),
-        step_row(4, "背景と自動起動", "10種類の背景から選択できます。自動起動は必要なときだけ明示的に有効化します。", styles, 55 * mm),
-        step_row(5, "サイズ変更", "右下をドラッグして、付箋を見やすい大きさへ変更できます。", styles, 55 * mm),
+        step_row(4, "ページと背景", "前後ボタンでページを切り替え、ページごとに10種類の背景を選択できます。", styles, 55 * mm),
+        step_row(5, "自動起動・サイズ変更", "自動起動は必要なときだけ有効にし、右下のつまみで大きさを変更します。", styles, 55 * mm),
     ]
     overview = Table([[screenshot_table, descriptions]], colWidths=[96 * mm, 72 * mm])
     overview.setStyle(
@@ -540,12 +576,21 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
     story.append(bullet("Enterで次の項目を作成します。空の項目でEnterを押すと箇条書きを終了します。", styles))
     story.append(bullet("長い項目は2行目以降も文字の開始位置へ自然に揃います。", styles))
     story.append(bullet("同じ項目の中だけで改行したいときは Shift + Enter を押します。", styles))
+    story.append(Paragraph("検索・装飾クリア・貼り付け", styles["section"]))
+    story.append(bullet("Ctrl + Fで表示中のページを検索し、F3／Shift + F3で次／前の一致へ移動します。", styles))
+    story.append(bullet("［T×］は選択文字のフォント・サイズ・色・太字などだけを既定へ戻し、箇条書きや中央揃えは維持します。", styles))
+    story.append(bullet("Ctrl + Shift + Vは、コピー元の書式を付けず文字と改行だけを貼り付けます。", styles))
     story.append(Spacer(1, 3 * mm))
     story.append(note_box("取り消し", "入力や書式変更を戻すときは Ctrl + Z、やり直すときは Ctrl + Y を使えます。", styles))
     story.append(PageBreak())
 
     # 4. Background and persistence
     story.append(Paragraph("背景・保存・持ち運び", styles["page_title"]))
+    story.append(Paragraph("ページを切り替える", styles["section"]))
+    story.append(bullet("［前へ］［次へ］で、同じウィンドウのままページを切り替えます。", styles))
+    story.append(bullet("［＋］は現在ページの次へ空ページを追加し、現在ページと同じ背景を引き継ぎます。", styles))
+    story.append(bullet("［削除］は確認後に表示中のページを削除します。最後の1ページは削除できません。", styles))
+    story.append(bullet("本文、文字装飾、背景はページごとに独立して保存されます。", styles))
     story.append(Paragraph("10種類の背景", styles["section"]))
     swatches = [
         ("レモン", "#FFF7B8"),
@@ -590,14 +635,14 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
     story.append(Paragraph("保存は自動", styles["section"]))
     story.append(
         Paragraph(
-            "本文、文字装飾、背景、ウィンドウの位置と大きさは自動保存されます。本文と外観、ウィンドウ位置は別ファイルに分け、アプリと同じフォルダー内の data へ保存します。",
+            "全ページの本文・文字装飾・背景と、ウィンドウの位置・大きさは自動保存されます。ポータブル版はアプリと同じフォルダーの data、Store版はWindowsのアプリ専用LocalStateへ保存します。",
             styles["body"],
         )
     )
     story.append(
         two_cards(
             "主な保存ファイル",
-            "本文・外観: data/sticky-note.json<br/>位置・サイズ: data/window-state.json",
+            "全ページ: data/sticky-note.json<br/>位置・サイズ: data/window-state.json",
             "バックアップ",
             "各保存ファイルの直前データを .bak または backup.json として残します。",
             styles,
@@ -660,19 +705,20 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
             styles["body"],
         )
     )
+    story.append(Paragraph("Microsoft Store版はWindows標準のStartupTaskを使用します。以下のGoogle Drive待機説明はポータブル版が対象です。", styles["small"]))
     story.append(step_row(1, "罫彩を使いたい場所へ置く", "USBメモリではなく、普段Windows起動時に接続される場所を推奨します。", styles))
     story.append(step_row(2, "［自動起動］へチェックを入れる", "確認画面の内容を読み、登録を実行します。", styles))
     story.append(step_row(3, "移動したら登録し直す", "アプリのフォルダーを移動した場合は、いったん解除してから新しい場所で再登録してください。", styles))
     story.append(Paragraph("Google Drive上から自動起動する場合", styles["section"]))
     story.append(
         Paragraph(
-            "Koyomadoと同様に、Google Drive外のローカル待機プログラムを先に起動します。すでに罫彩が起動していれば二重起動せず、Google Driveのサインインと同期準備が終わり、アプリ一式と本文・位置の両方の保存ファイルを読み書きできる状態が安定するまで待機します。待機は最大10分です。",
+            "ポータブル版では、Y-TEC署名の実行ファイル一覧と全EXE・DLL・ランタイム設定のSHA-256を検証してから、罫彩本体と自己完結ランタイムをGoogle Drive外のWindowsローカル領域へコピーし、その罫彩本体を直接自動起動します。旧専用補助EXEは使用しません。Google Drive上のコードは自動起動せず、本文・位置データの正本だけを従来のdataフォルダーから読み書きします。保存先と既存データを実際に読み書きできる状態が3秒間安定するまで最大10分待ち、準備できなければその回はエラーを表示せず終了します。",
             styles["body"],
         )
     )
     story.append(
         Paragraph(
-            "1.5.1以前から自動起動を使っている場合は、1.5.2への更新後に［自動起動］を一度オンにし直してください。通常起動だけで旧登録を書き換えることはありません。",
+            "旧補助EXE方式の自動起動登録を検出すると、ローカル罫彩本体方式へ更新するか、古い登録を解除するかを確認します。［はい］で更新、［いいえ］で解除します。旧版で［自動起動］をオフにしてから1.6.0へ入れ替え、手動起動後に再登録する方法が最も安全です。",
             styles["small"],
         )
     )
@@ -691,7 +737,7 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
     troubleshooting = [
         ("起動しても画面が見えない", "モニター構成ごとの位置を復元し、画面外なら接続中の画面内へ自動補正します。まずトレイアイコンをダブルクリックしてください。"),
         ("外部モニターの復帰後に位置が変わる", "1.5.3以降は構成が安定してから保存済みの位置とサイズを復元します。復帰後2秒ほど待ってからご確認ください。"),
-        ("保存した文章が見つからない", "Keisai.exe だけを別の場所へ移していないか確認してください。保存データはアプリと同じフォルダー内の data にあります。"),
+        ("保存した文章が見つからない", "ポータブル版でKeisai.exeだけを移していないか、別ページを表示していないか確認してください。Store版はWindowsのアプリ専用LocalStateへ保存します。"),
         ("Google Driveから自動起動しない", "サインインと同期が完了しているか、ファイルをローカルで利用できるか確認してください。10分を超えた場合は手動で起動してください。"),
         ("フォントの見た目が変わった", "使用したフォントが現在のPCへインストールされているか確認してください。別PCにないフォントは代替表示になることがあります。"),
         ("自動起動を解除したい", "罫彩を表示して［自動起動］のチェックを外します。アプリを移動・削除する前に解除してください。"),
@@ -722,12 +768,12 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
     story.append(Paragraph("データとプライバシー", styles["section"]))
     story.append(
         Paragraph(
-            "罫彩には外部通信、アクセス解析、広告、認証、クラウド同期はありません。入力内容は暗号化せず、アプリと同じフォルダー内へ保存します。機密情報の保管には使用せず、必要に応じてフォルダーごとバックアップしてください。",
+            "罫彩には外部通信、アクセス解析、広告、認証、クラウド同期はありません。入力内容は暗号化しません。ポータブル版はアプリ横、Store版はWindowsのアプリ専用LocalStateへ保存します。機密情報の保管には使用せず、必要に応じてバックアップしてください。",
             styles["body"],
         )
     )
     story.append(Paragraph("搭載していない機能", styles["section"]))
-    story.append(Paragraph("複数付箋、印刷、PDF出力、画像添付、共有、アカウント機能は搭載していません。", styles["body"]))
+    story.append(Paragraph("複数ウィンドウ、印刷、PDF出力、画像添付、共有、アカウント、クラウド同期は搭載していません。", styles["body"]))
     story.append(Spacer(1, 3 * mm))
     story.append(
         note_box(
@@ -737,7 +783,7 @@ def build_story(styles: dict[str, ParagraphStyle]) -> list:
         )
     )
     story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph("罫彩 1.5.4　操作説明書", styles["cover_kicker"]))
+    story.append(Paragraph("罫彩 1.6.0　操作説明書", styles["cover_kicker"]))
 
     return story
 
@@ -760,7 +806,7 @@ def main() -> None:
         bottomMargin=21 * mm,
         title="罫彩 操作説明書",
         author="Y-TEC",
-        subject="Windows専用フリーソフト 罫彩 1.5.4 の操作説明書",
+        subject="Windows専用フリーソフト 罫彩 1.6.0 の操作説明書",
         creator="Y-TEC",
     )
     frame = Frame(
