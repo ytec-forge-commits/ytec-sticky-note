@@ -5,12 +5,14 @@
 Windowsデスクトップの好きな位置へ置ける、罫線ノート風のシンプルな付箋アプリです。起動直後から本文を編集でき、装飾・10種類の背景・位置保存を備えます。個人・法人を問わず無料で利用できるWindows専用フリーソフトです。
 
 - 公式配布ページ: https://ytec.cloudfree.jp/forge/projects/keisai/
+- Microsoft Store: https://apps.microsoft.com/detail/9PB166N90KQ8
 - 対応環境: Windows 10 / 11（64ビット）
-- 配布形式: Microsoft Store版（審査通過後に公開）／ポータブルZIP版
+- 配布形式: Microsoft Store版（推奨）／自己署名ポータブルZIP版（補助配布）
 - ポータブル版のインストール: 不要（ZIPを展開して `Keisai.exe` を起動）
 - 通信機能: なし
 - ソースコード: https://github.com/ytec-forge-commits/ytec-sticky-note
-- 現在の配布版: [1.6.0 プレビュー版（自己署名）](https://ytec.cloudfree.jp/forge/projects/keisai/)
+- 現在のStore版: [1.6.0](https://apps.microsoft.com/detail/9PB166N90KQ8)
+- 現在の直接配布版: [1.6.0 プレビュー版（自己署名）](https://ytec.cloudfree.jp/forge/projects/keisai/)
 
 ## 主な機能
 
@@ -109,7 +111,7 @@ powershell -ExecutionPolicy Bypass -File scripts/package-msix.ps1 `
 
 ## Code signing policy
 
-Microsoft Store版は審査通過後にMicrosoft Storeが署名します。Forge／GitHubの直接配布版は、Y-TECの自己署名とSHA-256を使用します。SignPath Foundation申請は不採択となったため、現在はStore版と自己署名版の2経路です。自己署名版の制約、秘密鍵を配布しない工程、将来の署名プロバイダ切替は [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) に記載しています。
+Microsoft Store版は認定を通過し、Microsoft Storeの署名・更新経路で正式公開しています。Forge／GitHubの直接配布版は、Y-TECの自己署名とSHA-256を使用します。SignPath Foundation申請は不採択となったため、現在はStore版と自己署名版の2経路です。自己署名版の制約、秘密鍵を配布しない工程、将来の署名プロバイダ切替は [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) に記載しています。
 
 ## ライセンスとクレジット
 

@@ -5,12 +5,14 @@
 Keisai is a simple, ruled-notebook-style sticky note for Windows. It opens directly into an editable note and provides rich-text formatting, ten paper backgrounds, and monitor-configuration-aware window placement. It is a free Windows application for both personal and commercial use.
 
 - Official download page: https://ytec.cloudfree.jp/forge/en/projects/keisai/
+- Microsoft Store: https://apps.microsoft.com/detail/9PB166N90KQ8
 - Supported systems: Windows 10 and Windows 11, 64-bit
-- Distribution: Microsoft Store package (published after certification) and portable ZIP
+- Distribution: Microsoft Store edition (recommended) and self-signed portable ZIP (supplementary)
 - Portable installation: None; extract the ZIP and run `Keisai.exe`
 - Network communication: None
 - Source code: https://github.com/ytec-forge-commits/ytec-sticky-note
-- Current release: [1.6.0 Preview (self-signed)](https://ytec.cloudfree.jp/forge/en/projects/keisai/)
+- Current Store edition: [1.6.0](https://apps.microsoft.com/detail/9PB166N90KQ8)
+- Current direct edition: [1.6.0 Preview (self-signed)](https://ytec.cloudfree.jp/forge/en/projects/keisai/)
 
 ## Features
 
@@ -115,7 +117,7 @@ Keisai intentionally does not include multiple notes, cloud synchronization, aut
 
 ## Code signing policy
 
-Microsoft signs the Store package after certification. Direct Forge and GitHub downloads use a Y-TEC self-signed signature plus SHA-256. The SignPath Foundation application was not accepted, so the current distribution paths are the Microsoft Store and the self-signed direct build. See [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) for the limitations of self-signing, private-key protection, and future provider migration.
+The Store edition has passed certification and is officially distributed through Microsoft Store's signing and update channel. Direct Forge and GitHub downloads use a Y-TEC self-signed signature plus SHA-256. The SignPath Foundation application was not accepted, so the current distribution paths are the Microsoft Store and the self-signed direct build. See [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) for the limitations of self-signing, private-key protection, and future provider migration.
 
 ## License and credits
 
