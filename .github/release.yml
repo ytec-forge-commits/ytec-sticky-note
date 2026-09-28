@@ -1,0 +1,12 @@
+changelog:
+  categories:
+    - title: 新機能
+      labels: [feature, enhancement]
+    - title: 修正
+      labels: [bug]
+    - title: ドキュメント
+      labels: [documentation]
+    - title: 保守・依存関係
+      labels: [maintenance, dependencies]
+    - title: その他
+      labels: ["*"]

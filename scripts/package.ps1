@@ -1,0 +1,106 @@
+param(
+    [ValidateSet('win-x64')]
+    [string]$Runtime = 'win-x64'
+)
+
+$ErrorActionPreference = 'Stop'
+$productName = 'Keisai'
+$projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$artifactRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts'))
+$projectFile = Join-Path $projectRoot 'src\YtecStickyNote\YtecStickyNote.csproj'
+[xml]$projectDefinition = Get-Content -LiteralPath $projectFile -Raw -Encoding UTF8
+$productVersion = [string]$projectDefinition.Project.PropertyGroup.Version
+if ([string]::IsNullOrWhiteSpace($productVersion)) {
+    throw 'Application version is missing from YtecStickyNote.csproj.'
+}
+$publishDirectory = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot "$productName-$Runtime"))
+$stagingDirectory = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot ".package-staging-$Runtime"))
+$zipPath = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot "$productName-$productVersion-$Runtime.zip"))
+$checksumPath = [System.IO.Path]::GetFullPath((Join-Path $artifactRoot "$productName-$productVersion-$Runtime.sha256.txt"))
+$manualFileName = -join @(
+    [char]0x7F6B, [char]0x5F69, '_',
+    [char]0x64CD, [char]0x4F5C, [char]0x8AAC, [char]0x660E, [char]0x66F8,
+    '.pdf'
+)
+$manualPath = Join-Path $projectRoot (Join-Path 'output\pdf' $manualFileName)
+$userDotnetExe = Join-Path $env:USERPROFILE '.dotnet\dotnet.exe'
+$systemDotnetExe = Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'
+
+$dotnetExe = if (Test-Path -LiteralPath $userDotnetExe) {
+    $userDotnetExe
+} elseif (Test-Path -LiteralPath $systemDotnetExe) {
+    $systemDotnetExe
+} else {
+    (Get-Command dotnet -ErrorAction Stop).Source
+}
+
+if (-not (Test-Path -LiteralPath $manualPath)) {
+    throw "Operation manual not found. Run scripts\build-manual.py first: $manualPath"
+}
+
+$artifactPrefix = $artifactRoot.TrimEnd('\') + '\'
+foreach ($path in @($publishDirectory, $stagingDirectory, $zipPath, $checksumPath)) {
+    if (-not $path.StartsWith($artifactPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Package outputs must stay under artifacts.'
+    }
+}
+
+New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
+if (Test-Path -LiteralPath $stagingDirectory) {
+    Remove-Item -LiteralPath $stagingDirectory -Recurse -Force
+}
+if (Test-Path -LiteralPath $zipPath) {
+    Remove-Item -LiteralPath $zipPath -Force
+}
+if (Test-Path -LiteralPath $checksumPath) {
+    Remove-Item -LiteralPath $checksumPath -Force
+}
+
+& $dotnetExe publish $projectFile -c Release -r $Runtime --self-contained true -o $stagingDirectory
+if ($LASTEXITCODE -ne 0) {
+    throw "dotnet publish failed with exit code $LASTEXITCODE."
+}
+
+Copy-Item -LiteralPath (Join-Path $stagingDirectory 'YTEC-Sticky-Note.exe') -Destination (Join-Path $stagingDirectory 'Keisai.exe')
+Copy-Item -LiteralPath (Join-Path $stagingDirectory 'YTEC-Sticky-Note.dll') -Destination (Join-Path $stagingDirectory 'Keisai.dll')
+Copy-Item -LiteralPath (Join-Path $stagingDirectory 'YTEC-Sticky-Note.deps.json') -Destination (Join-Path $stagingDirectory 'Keisai.deps.json')
+Copy-Item -LiteralPath (Join-Path $stagingDirectory 'YTEC-Sticky-Note.runtimeconfig.json') -Destination (Join-Path $stagingDirectory 'Keisai.runtimeconfig.json')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\README-PORTABLE.txt') -Destination (Join-Path $stagingDirectory 'README.txt')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE.txt') -Destination (Join-Path $stagingDirectory 'LICENSE.txt')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'NOTICE') -Destination (Join-Path $stagingDirectory 'NOTICE.txt')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $stagingDirectory 'THIRD_PARTY_NOTICES.txt')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\PRIVACY.txt') -Destination (Join-Path $stagingDirectory 'PRIVACY.txt')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'CHANGELOG.md') -Destination (Join-Path $stagingDirectory 'CHANGELOG.txt')
+Copy-Item -LiteralPath $manualPath -Destination (Join-Path $stagingDirectory $manualFileName)
+& (Join-Path $PSScriptRoot 'collect-third-party-licenses.ps1') `
+    -DestinationRoot (Join-Path $stagingDirectory 'third-party-licenses') `
+    -DotnetExecutable $dotnetExe
+$minimumZipTimestamp = [datetime]'1980-01-01T00:00:00'
+Get-ChildItem -LiteralPath $stagingDirectory -Recurse -Force |
+    Where-Object { $_.LastWriteTime -lt $minimumZipTimestamp } |
+    ForEach-Object { $_.LastWriteTime = $minimumZipTimestamp }
+Compress-Archive -Path (Join-Path $stagingDirectory '*') -DestinationPath $zipPath -CompressionLevel Optimal
+$zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerInvariant()
+Set-Content -LiteralPath $checksumPath -Value "$zipHash  $([System.IO.Path]::GetFileName($zipPath))" -Encoding ascii
+
+New-Item -ItemType Directory -Force -Path $publishDirectory | Out-Null
+$publishPrefix = $publishDirectory.TrimEnd('\') + '\'
+Get-ChildItem -LiteralPath $publishDirectory -Force |
+    Where-Object { $_.Name -ne 'data' } |
+    ForEach-Object {
+        if (-not $_.FullName.StartsWith($publishPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Refusing to replace an item outside the publish directory.'
+        }
+        Remove-Item -LiteralPath $_.FullName -Recurse -Force
+    }
+
+Get-ChildItem -LiteralPath $stagingDirectory -Force | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination $publishDirectory -Recurse -Force
+}
+Remove-Item -LiteralPath $stagingDirectory -Recurse -Force
+
+Write-Host "Publish directory: $publishDirectory"
+Write-Host "Publish ZIP: $zipPath"
+Write-Host "SHA-256: $zipHash"
+Write-Host "Checksum file: $checksumPath"
+Write-Host 'Existing publish-directory data was preserved; data is not included in the ZIP.'
