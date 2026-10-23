@@ -10,16 +10,6 @@ updates:
     open-pull-requests-limit: 3
     labels: [dependencies]
 
-  - package-ecosystem: cargo
-    directory: /src/YtecStickyNote.Startup
-    schedule:
-      interval: weekly
-      day: monday
-      time: "03:15"
-      timezone: Asia/Tokyo
-    open-pull-requests-limit: 3
-    labels: [dependencies]
-
   - package-ecosystem: github-actions
     directory: /
     schedule:
